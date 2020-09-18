@@ -217,7 +217,7 @@ wmataStops <- wmataStops %>%
   mutate(LINE = replace(LINE,LINE == "slvr", "silver"))%>%
   mutate(LINE = replace(LINE,LINE == "yllw", "yellow"))%>%
   mutate(LINE = replace(LINE,LINE == "grn", "green"))
-
+wmataStops
 
 # Visualize it
 
