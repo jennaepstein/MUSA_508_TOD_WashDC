@@ -9,6 +9,7 @@ options(scipen=999)
 options(tigris_class = "sf")
 
 # add census API key - make sure to replace this with your own API key!
+
 census_api_key("41e1c0d912341017fa6f36a5da061d3b23de335e", overwrite = TRUE)
 
 mapTheme <- function(base_size = 12) {
@@ -64,9 +65,8 @@ q5 <- function(variable) {as.factor(ntile(variable, 5))}
 # Load hexadecimal color palette
 palette5 <- c("#f0f9e8","#bae4bc","#7bccc4","#43a2ca","#0868ac")
 
-# Here's another color palette with 5 colors we could use. Check out colorbrewer2.org
-
-palette5classBlues <- c("#eff3ff", "#bdd7e7", "#6baed6","#3182bd", "#08519c")
+# Here's a palette of two colors for TOD and Non-TOD, similar to what we used in lab.
+paletteTOD <- c("#fdb863", "#80cdc1")
 
 
 # Downloading & wrangling the Census data
@@ -179,7 +179,7 @@ wmataBuffers <-
       st_sf() %>%
       mutate(Legend = "Unioned Buffer"))
 
-# Examine both buffers by making a small multiple "facet_wrap" plot showing each
+# A small multiple "facet_wrap" plot showing both buffers
 
 ggplot() +
   geom_sf(data=wmataBuffers) +
@@ -213,7 +213,23 @@ selectCentroids <-
   dplyr::select(TotalPop) %>%
   mutate(Selection_Type = "Select by Centroids")
 
-# ---- Indicator Maps ----
+# Examining the three different spatial selection types to further illustrate why select by centroids is best
+# Using Total Population as the fill
+
+allTracts.group.TotalPop <- 
+  rbind(clip, selection, selectCentroids)
+    
+SpatialSelectionTypes <-
+      ggplot(allTracts.group.TotalPop)+
+      geom_sf(data = st_union(tracts2009))+
+      geom_sf(aes(fill = TotalPop)) +
+      labs(title = "Total Population within 1/2 mile of a WMATA station", subtitle = "Three types of spatial selection") +
+      facet_wrap(~Selection_Type) +
+      mapTheme() + 
+      theme(plot.title = element_text(size=20))
+SpatialSelectionTypes
+
+# ---- INDICATOR MAPS ---- 
 
 # We do our centroid joins as above, and then do a "disjoin" to get the ones that *don't* join, and add them all together.
 # Do this operation and then examine it.
@@ -242,6 +258,7 @@ TimeSpaceGrps <-
   geom_sf(aes(fill = TOD)) +
   labs(title = "Time/Space Groups") +
   facet_wrap(~year)+
+  scale_fill_manual(values = paletteTOD)+
   mapTheme() + 
   theme(plot.title = element_text(size=22))
 TimeSpaceGrps
@@ -251,18 +268,18 @@ TimeSpaceGrps
 MedRent <-
   ggplot(allTracts.group)+
   geom_sf(data = st_union(tracts2009))+
-  geom_sf(aes(fill = q5(MedRent.inf))) +
-  geom_sf(data = buffer, fill = "transparent", color = "red")+
-  scale_fill_manual(values = palette5classBlues,
+  geom_sf(aes(fill = q5(MedRent.inf)), color = NA) +
+  geom_sf(data = buffer, fill = "transparent",color = "red")+
+  scale_fill_manual(values = palette5,
                     labels = qBr(allTracts.group, "MedRent.inf"),
-                    name = "Rent\n(Quintile Breaks)") +
-  labs(title = "Median Rent 2009-2017", subtitle = "Real Dollars; Red border denotes areas close to WMATA stations ") +
+                    name = "Median Rent ($)\n(Quintile Breaks)") +
+  labs(title = "Median Rent 2009-2017", subtitle = "Real Dollars; Red border denotes areas close to WMATA stations") +
   facet_wrap(~year)+
   mapTheme() + 
   theme(plot.title = element_text(size=22))
 MedRent
 
-# --- TOD Indicator Tables ----
+# --- TOD INDICATOR TABLES ---- if we end up choosing other variables, we can just swap things out
 
 allTracts.Summary <- 
   st_drop_geometry(allTracts.group) %>%
@@ -290,7 +307,7 @@ allTracts.Summary %>%
   footnote(general_title = "\n",
            general = "Summary for All Tracts")
 
-# --- TOD Indicator Plots ------ NEED TO DISCUSS WHAT VARIABLES WE WANT TO USE HERE. CURRENTLY USING ONES FROM CLASS
+# --- TOD INDICATOR PLOTS ------ if we end up choosing other variables, we can just swap things out
 
 # Creating small multiple plots using the "gather" command to go from wide to long
 
@@ -299,7 +316,10 @@ allTracts.Summary %>%
   ggplot(aes(year, Value, fill = TOD)) +
   geom_bar(stat = "identity", position = "dodge") +
   facet_wrap(~Variable, scales = "free", ncol=5) +
-  scale_fill_manual(values = c("#bae4bc", "#0868ac")) +
+  scale_fill_manual(values = paletteTOD) +
   labs(title = "Indicator differences across time and space") +
   plotTheme() + theme(legend.position="bottom")
+
+########################
+# --- Working on next (Jenna)- distance to subway stations and half mile buffers
 
