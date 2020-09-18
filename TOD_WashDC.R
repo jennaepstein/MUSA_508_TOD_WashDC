@@ -321,5 +321,14 @@ allTracts.Summary %>%
   plotTheme() + theme(legend.position="bottom")
 
 ########################
-# --- Working on next (Jenna)- distance to subway stations and half mile buffers
+# Create two graduated symbol maps of population and rent within 0.5 mile of each transit station. Google for more information, but a graduate symbol map represents quantities for each transit station proportionally.
+
+DC_tract_centroids <- sf::st_centroid(selectCentroids)
+
+Population2009SymbolMap <-
+  ggplot(selectCentroids) + 
+    geom_sf()+
+    geom_sf(aes(size = TotalPop), data = DC_tract_centroids, color="blue", alpha=0.5, show.legend="point") +
+    scale_size_area()
+Population2009SymbolMap
 
