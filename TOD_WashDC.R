@@ -3,12 +3,13 @@ library(tidyverse)
 library(tidycensus)
 library(sf)
 library(kableExtra)
+library(tigris)
 
 options(scipen=999)
 options(tigris_class = "sf")
 
-# add census API key
-census_api_key("41e1c0d912341017fa6f36a5da061d3b23de335e", overwrite = TRUE, install = TRUE)
+# add census API key - make sure to replace this with your own API key!
+census_api_key("41e1c0d912341017fa6f36a5da061d3b23de335e", overwrite = TRUE)
 
 mapTheme <- function(base_size = 12) {
   theme(
@@ -60,15 +61,35 @@ qBr <- function(df, variable, rnd) {
 
 q5 <- function(variable) {as.factor(ntile(variable, 5))}
 
+# Load hexadecimal color palette
 palette5 <- c("#f0f9e8","#bae4bc","#7bccc4","#43a2ca","#0868ac")
+
+# Here's another color palette with 5 colors we could use. Check out colorbrewer2.org
+
+palette5classBlues <- c("#eff3ff", "#bdd7e7", "#6baed6","#3182bd", "#08519c")
+
 
 # Downloading & wrangling the Census data
 
+# Creating a vector of census variables, since we have several.
+
+acs_vars_DC <- c("B25026_001E", # ACS total pop estimate
+                "B02001_002E", # People describing themselves as "white alone"
+                "B15001_050E", # Females with bachelors degrees
+                "B15001_009E",# Males with bachelors degrees
+                "B19013_001E", # Median HH income
+                "B25058_001E", # Median rent
+                "B06012_002E") # Total poverty
+
+
+# ---- Washington, DC - Census Data - 2009 -----
 tracts2009 <- 
-  get_acs(geography = "tract", variables = c("B25026_001E","B02001_002E","B15001_050E",
-                                             "B15001_009E","B19013_001E","B25058_001E",
-                                             "B06012_002E"), 
-          year=2009, state=11, geometry=T, output="wide") %>%
+  get_acs(geography = "tract", 
+          variables = acs_vars_DC, 
+          year=2009, 
+          state=11, 
+          geometry=T, 
+          output="wide") %>%
   st_transform('ESRI:102728') %>%
   rename(TotalPop = B25026_001E, 
          Whites = B02001_002E,
@@ -85,13 +106,15 @@ tracts2009 <-
   dplyr::select(-Whites, -FemaleBachelors, -MaleBachelors, -TotalPoverty)
 
 
-# ---- Washington, DC Census Data, Tracts, 2017-----
+# ---- Washington, DC - Census Data - 2017 -----
 
 tracts2017 <- 
-  get_acs(geography = "tract", variables = c("B25026_001E","B02001_002E","B15001_050E",
-                                             "B15001_009E","B19013_001E","B25058_001E",
-                                             "B06012_002E"), 
-          year=2017, state=11, geometry=T, output="wide") %>%
+  get_acs(geography = "tract", 
+          variables = acs_vars_DC, 
+          year=2017, 
+          state=11, 
+          geometry=T, 
+          output="wide") %>%
   st_transform('ESRI:102728') %>%
   rename(TotalPop = B25026_001E, 
          Whites = B02001_002E,
@@ -145,8 +168,7 @@ ggplot() +
 # --- Relating WMATA Stops and Tracts ----
 
 # Create buffers (in feet - note the CRS) around WMATA stops -
-# Both a buffer for each stop, and a union of the buffers...
-# and bind these objects together
+# Both a buffer for each stop, and a union of the buffers, and then bind these objects together
 
 wmataBuffers <- 
   rbind(
@@ -231,7 +253,7 @@ MedRent <-
   geom_sf(data = st_union(tracts2009))+
   geom_sf(aes(fill = q5(MedRent.inf))) +
   geom_sf(data = buffer, fill = "transparent", color = "red")+
-  scale_fill_manual(values = palette5,
+  scale_fill_manual(values = palette5classBlues,
                     labels = qBr(allTracts.group, "MedRent.inf"),
                     name = "Rent\n(Quintile Breaks)") +
   labs(title = "Median Rent 2009-2017", subtitle = "Real Dollars; Red border denotes areas close to WMATA stations ") +
