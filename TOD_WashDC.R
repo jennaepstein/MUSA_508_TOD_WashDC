@@ -62,12 +62,12 @@ q5 <- function(variable) {as.factor(ntile(variable, 5))}
 
 palette5 <- c("#f0f9e8","#bae4bc","#7bccc4","#43a2ca","#0868ac")
 
-# 1.2.1 Downloading & wrangling Census data
+# Downloading & wrangling the Census data
 
-# ---- Year 2009 tracts -----
+# ---- Year 2009 Tracts Census Data-----
 
 # We run our year 2000 code using 2009 ACS (and ACS variables from our 2017 list)
-# Notice this returns "long" data - let's examine it
+# This returns "long" data
 
 tracts09 <-  
   get_acs(geography = "tract", variables = c("B25026_001E","B02001_002E","B15001_050E",
@@ -76,13 +76,7 @@ tracts09 <-
           year=2009, state=11, geometry=T) %>% 
   st_transform('ESRI:102728')
 
-
-# Wide data vs long data (and spread vs gather)
-
-# https://www.garrickadenbuie.com/project/tidyexplain/images/tidyr-spread-gather.gif
-
-# Referencing the data by matrix notation, and learning about the data...
-# Let's examine each variable and the elements of an sf object
+# Examine each variable and the elements of an sf object
 
 tracts09[1:3,]
 
@@ -149,7 +143,7 @@ D <-
   mapTheme() + theme(plot.title = element_text(size=22))
 D
 
-# Let's "spread" the data into wide form - each row becomes a census tract, and each column becomes a variable.
+# Spread the data into wide form - each row becomes a census tract, and each column becomes a variable.
 
 tracts09 <- 
   tracts09 %>%
@@ -166,7 +160,7 @@ tracts09 <-
 
 st_drop_geometry(tracts09)[1:3,]
 
-# Let's create new rate variables using mutate
+# Create new rate variables using mutate
 
 tracts09 <- 
   tracts09 %>%
@@ -176,10 +170,9 @@ tracts09 <-
          year = "2009") %>%
   dplyr::select(-Whites,-FemaleBachelors,-MaleBachelors,-TotalPoverty)
 
-# Tracts 2009 is now complete. Let's grab 2017 tracts and do a congruent
-# set of operations
+# Tracts 2009 is now complete. Let's grab 2017 tracts and do a congruent set of operations
 
-# ---- 2017 Census Data -----
+# ---- Year 2017 Tracts Census Data -----
 
 # Notice that we are getting "wide" data here in the first place
 # This saves us the trouble of using "spread"
@@ -204,10 +197,9 @@ tracts17 <-
          year = "2017") %>%
   dplyr::select(-Whites, -FemaleBachelors, -MaleBachelors, -TotalPoverty) 
 
-# --- Combining 09 and 17 data ----
+# --- Combining 2009 and 2017 data ----
 
 allTracts <- rbind(tracts09,tracts17)
-
 
 # ---- Wrangling Transit Open Data -----
 
@@ -227,7 +219,7 @@ wmataStops <- wmataStops %>%
   mutate(LINE = replace(LINE,LINE == "grn", "green"))
 
 
-# Let's visualize it
+# Visualize it
 
 ggplot() + 
   geom_sf(data=st_union(tracts09)) +
@@ -373,7 +365,7 @@ allTracts.Summary %>%
   footnote(general_title = "\n",
            general = "Table 2.3")
 
-# --- TOD Indicator Plots ------
+# --- TOD Indicator Plots ------ STILL PHILLY CODE FROM CLASS BEYOND THIS POINT
 
 # Let's create small multiple plots
 # We use the "gather" command (look this one up please)
