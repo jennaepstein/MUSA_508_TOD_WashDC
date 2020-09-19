@@ -73,10 +73,11 @@ paletteTOD <- c("#fdb863", "#80cdc1")
 
 # Creating a vector of census variables, since we have several.
 
-acs_vars_DC <- c("B25026_001E", # ACS total pop estimate
+acs_vars_DC <- c("B25026_001E", # Estimate!!Total population in occupied housing units
                 "B02001_002E", # People describing themselves as "white alone"
+                "B02001_003E", # People describing themselves as "black" or "african-american" alone
                 "B15001_050E", # Females with bachelors degrees
-                "B15001_009E",# Males with bachelors degrees
+                "B15001_009E", # Males with bachelors degrees
                 "B19013_001E", # Median HH income
                 "B25058_001E", # Median rent
                 "B06012_002E") # Total poverty
@@ -90,20 +91,22 @@ tracts2009 <-
           state=11, 
           geometry=T, 
           output="wide") %>%
-  st_transform('ESRI:102728') %>%
+  st_transform('ESRI:102685') %>%
   rename(TotalPop = B25026_001E, 
          Whites = B02001_002E,
+         Blacks = B02001_003E,
          FemaleBachelors = B15001_050E, 
          MaleBachelors = B15001_009E,
          MedHHInc = B19013_001E, 
          MedRent = B25058_001E,
          TotalPoverty = B06012_002E) %>%
-  dplyr::select(-NAME, -starts_with("B")) %>%
+  dplyr::select(-NAME, -starts_with("B0"), -starts_with("B1"), -starts_with("B2")) %>%
   mutate(pctWhite = ifelse(TotalPop > 0, Whites / TotalPop,0),
+         pctBlack = ifelse(TotalPop > 0, Blacks / TotalPop,0),
          pctBachelors = ifelse(TotalPop > 0, ((FemaleBachelors + MaleBachelors) / TotalPop),0),
          pctPoverty = ifelse(TotalPop > 0, TotalPoverty / TotalPop, 0),
          year = "2009") %>%
-  dplyr::select(-Whites, -FemaleBachelors, -MaleBachelors, -TotalPoverty)
+  dplyr::select(-Whites, -Blacks, -FemaleBachelors, -MaleBachelors, -TotalPoverty)
 
 
 # ---- Washington, DC - Census Data - 2017 -----
@@ -115,20 +118,22 @@ tracts2017 <-
           state=11, 
           geometry=T, 
           output="wide") %>%
-  st_transform('ESRI:102728') %>%
+  st_transform('ESRI:102685') %>%
   rename(TotalPop = B25026_001E, 
          Whites = B02001_002E,
+         Blacks = B02001_003E,
          FemaleBachelors = B15001_050E, 
          MaleBachelors = B15001_009E,
          MedHHInc = B19013_001E, 
          MedRent = B25058_001E,
          TotalPoverty = B06012_002E) %>%
-  dplyr::select(-NAME, -starts_with("B")) %>%
+  dplyr::select(-NAME, -starts_with("B0"), -starts_with("B1"), -starts_with("B2")) %>%
   mutate(pctWhite = ifelse(TotalPop > 0, Whites / TotalPop,0),
+         pctBlack = ifelse(TotalPop > 0, Blacks / TotalPop,0),
          pctBachelors = ifelse(TotalPop > 0, ((FemaleBachelors + MaleBachelors) / TotalPop),0),
          pctPoverty = ifelse(TotalPop > 0, TotalPoverty / TotalPop, 0),
          year = "2017") %>%
-  dplyr::select(-Whites, -FemaleBachelors, -MaleBachelors, -TotalPoverty) 
+  dplyr::select(-Whites, -Blacks, -FemaleBachelors, -MaleBachelors, -TotalPoverty) 
 
 # --- Combining 2009 and 2017 data ----
 
@@ -164,6 +169,15 @@ ggplot() +
        subtitle="Washington, DC", 
        caption="Source: OpenDataDC") +
   mapTheme()
+
+# Bringing in Lines, to use later for reference
+wmataLines <- 
+  rbind(
+    st_read("https://opendata.arcgis.com/datasets/a29b9dbb2f00459db2b0c3c56faca297_106.geojson") %>%
+      select(NAME)) %>%
+    st_transform(st_crs(tracts2009))
+wmataLines
+
 
 # --- Relating WMATA Stops and Tracts ----
 
@@ -223,7 +237,7 @@ SpatialSelectionTypes <-
       ggplot(allTracts.group.TotalPop)+
       geom_sf(data = st_union(tracts2009))+
       geom_sf(aes(fill = TotalPop)) +
-      labs(title = "Total Population within 1/2 mile of a WMATA station", subtitle = "Three types of spatial selection") +
+      labs(title = "Total Population within 1/2 mi of a WMATA station, 2009", subtitle = "Three types of spatial selection") +
       facet_wrap(~Selection_Type) +
       mapTheme() + 
       theme(plot.title = element_text(size=20))
@@ -278,6 +292,22 @@ MedRent <-
   mapTheme() + 
   theme(plot.title = element_text(size=22))
 MedRent
+  
+MedRentWmataLines <-
+  ggplot(allTracts.group)+
+  geom_sf(data = st_union(tracts2009))+
+  geom_sf(aes(fill = q5(MedRent.inf)), color = NA) +
+  geom_sf(data = buffer, fill = "transparent",color = "red")+
+  geom_sf(data = wmataLines, color = "black")+
+  scale_fill_manual(values = palette5,
+                    labels = qBr(allTracts.group, "MedRent.inf"),
+                    name = "Median Rent ($)\n(Quintile Breaks)") +
+  labs(title = "Median Rent 2009-2017", subtitle = "Real Dollars; Red border denotes areas close to WMATA stations") +
+  facet_wrap(~year)+
+  mapTheme() + 
+  theme(plot.title = element_text(size=22))
+MedRentWmataLines
+  
 
 # --- TOD INDICATOR TABLES ---- if we end up choosing other variables, we can just swap things out
 
@@ -287,11 +317,12 @@ allTracts.Summary <-
   summarize(Rent = mean(MedRent, na.rm = T),
             Population = mean(TotalPop, na.rm = T),
             Percent_White = mean(pctWhite, na.rm = T),
+            Percent_Black = mean(pctBlack, na.rm = T),
             Percent_Bach = mean(pctBachelors, na.rm = T),
             Percent_Poverty = mean(pctPoverty, na.rm = T))
 
 kable(allTracts.Summary) %>%
-  kable_styling() %>%s
+  kable_styling() %>%
   footnote(general_title = "\n",
            general = "Table caption")
 
@@ -305,7 +336,7 @@ allTracts.Summary %>%
   kable() %>%
   kable_styling() %>%
   footnote(general_title = "\n",
-           general = "Summary for All Tracts")
+           general = "Summary for All Tracts in Washington, DC")
 
 # --- TOD INDICATOR PLOTS ------ if we end up choosing other variables, we can just swap things out
 
@@ -315,20 +346,55 @@ allTracts.Summary %>%
   gather(Variable, Value, -year, -TOD) %>%
   ggplot(aes(year, Value, fill = TOD)) +
   geom_bar(stat = "identity", position = "dodge") +
-  facet_wrap(~Variable, scales = "free", ncol=5) +
+  facet_wrap(~Variable, scales = "free", ncol=3) +
   scale_fill_manual(values = paletteTOD) +
   labs(title = "Indicator differences across time and space") +
   plotTheme() + theme(legend.position="bottom")
 
 ########################
-# Create two graduated symbol maps of population and rent within 0.5 mile of each transit station. Google for more information, but a graduate symbol map represents quantities for each transit station proportionally.
+# TASK: Create two graduated symbol maps of population and rent within 1/2 mi of each transit station. Google for more information, but a graduate symbol map represents quantities for each transit station proportionally.
 
+# Getting centroids for tracts and adding them to dataframe
 DC_tract_centroids <- sf::st_centroid(selectCentroids)
 
-Population2009SymbolMap <-
-  ggplot(selectCentroids) + 
+DC_tract_centroids <- DC_tract_centroids %>%
+  dplyr::mutate(lat = sf::st_coordinates(.)[,1],
+                lon = sf::st_coordinates(.)[,2])
+DC_tract_centroids
+
+
+# GRADUATED SYMBOL MAPS
+# Population
+PopulationSymbolMap <-
+  ggplot(DC_tract_centroids) + 
     geom_sf()+
-    geom_sf(aes(size = TotalPop), data = DC_tract_centroids, color="blue", alpha=0.5, show.legend="point") +
-    scale_size_area()
-Population2009SymbolMap
+    geom_sf(data=allTracts)+
+      aes()+
+    geom_point(aes(x=lat, y=lon, size = TotalPop), data = DC_tract_centroids, color="blue", alpha=0.5) +
+  facet_wrap(~year) +    
+  scale_size_area() +
+      geom_sf(data=wmataStops, size=2, shape=18, color="black") + 
+        aes() +
+  labs(title="Population in Census Tracts within 1/2 mi. of WMATA Stops", 
+     subtitle="Washington, DC", 
+     caption="Data: US Census Bureau; opendata.dc.gov") +
+  mapTheme()
+PopulationSymbolMap
+
+  
+#MedRent - this one isn't working at the moment
+MedRentSymbolMap <-
+    ggplot(DC_tract_centroids) + 
+    geom_sf()+
+    geom_sf(data = tracts2009,
+            aes(fill = q5(MedRent.inf)), color = NA) +
+              scale_fill_manual(values = palette5) +
+    geom_sf(data=wmataStops)+
+    aes() +
+    labs(title="Median Rent in Census Tracts within 1/2 mi. of WMATA Stops", 
+         subtitle="Washington, DC", 
+         caption="Source: OpenDataDC") +
+    mapTheme()
+MedRentSymbolMap
+
 
