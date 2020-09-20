@@ -364,7 +364,7 @@ DC_tract_centroids
 
 
 # GRADUATED SYMBOL MAPS
-# Population
+# Population - likely need to adjust the breaks in the scale. Hard to tell difference between population over the two years also. Need to include circles for metro stops in legend.
 PopulationSymbolMap <-
   ggplot(DC_tract_centroids) + 
     geom_sf()+
@@ -373,7 +373,7 @@ PopulationSymbolMap <-
     geom_point(aes(x=lat, y=lon, size = TotalPop), data = DC_tract_centroids, color="blue", alpha=0.5) +
   facet_wrap(~year) +    
   scale_size_area() +
-      geom_sf(data=wmataStops, size=2, shape=18, color="black") + 
+      geom_sf(data=wmataStops, size=1, color="black") + 
         aes() +
   labs(title="Population in Census Tracts within 1/2 mi. of WMATA Stops", 
      subtitle="Washington, DC", 
@@ -382,14 +382,15 @@ PopulationSymbolMap <-
 PopulationSymbolMap
 
   
-#MedRent - this one isn't working at the moment
+#MedRent - needs some styling help, also need the legend for medrent fixed (MedRent.inf wasn't working. and need to include metro stops circle in legend.
 MedRentSymbolMap <-
     ggplot(DC_tract_centroids) + 
     geom_sf()+
-    geom_sf(data = tracts2009,
-            aes(fill = q5(MedRent.inf)), color = NA) +
+    geom_sf(data = allTracts,
+            aes(fill = q5(MedRent)), color = NA) +
               scale_fill_manual(values = palette5) +
-    geom_sf(data=wmataStops)+
+    facet_wrap(~year)+
+    geom_sf(data=wmataStops, size=1, color="black")+
     aes() +
     labs(title="Median Rent in Census Tracts within 1/2 mi. of WMATA Stops", 
          subtitle="Washington, DC", 
