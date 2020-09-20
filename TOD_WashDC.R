@@ -80,7 +80,10 @@ acs_vars_DC <- c("B25026_001E", # Estimate!!Total population in occupied housing
                 "B15001_009E", # Males with bachelors degrees
                 "B19013_001E", # Median HH income
                 "B25058_001E", # Median rent
-                "B06012_002E") # Total poverty
+                "B06012_002E", # Total poverty
+                "DP03_0019PE", # Commute by car %
+                "DP03_0021PE", # Commute by Public Transportation %
+                "DP03_0004PE") # Civilian labor force employed %
 
 
 # ---- Washington, DC - Census Data - 2009 -----
@@ -99,14 +102,20 @@ tracts2009 <-
          MaleBachelors = B15001_009E,
          MedHHInc = B19013_001E, 
          MedRent = B25058_001E,
-         TotalPoverty = B06012_002E) %>%
-  dplyr::select(-NAME, -starts_with("B0"), -starts_with("B1"), -starts_with("B2")) %>%
+         TotalPoverty = B06012_002E,
+         CarCommute = DP03_0019PE,
+         PubCommute = DP03_0021PE,
+         CivLabForceEmployed = DP03_0004PE) %>%
+  dplyr::select(-NAME, -starts_with("B0"), -starts_with("B1"), -starts_with("B2"), -starts_with("D")) %>%
   mutate(pctWhite = ifelse(TotalPop > 0, Whites / TotalPop,0),
          pctBlack = ifelse(TotalPop > 0, Blacks / TotalPop,0),
          pctBachelors = ifelse(TotalPop > 0, ((FemaleBachelors + MaleBachelors) / TotalPop),0),
          pctPoverty = ifelse(TotalPop > 0, TotalPoverty / TotalPop, 0),
+         pctCarCommute = ifelse(CarCommute < 100, CarCommute* 0.01, 0),
+         pctPubCommute = ifelse(PubCommute < 100, PubCommute* 0.01, 0),
+         pctEmployed = ifelse(CivLabForceEmployed < 100, CivLabForceEmployed* 0.01, 0),
          year = "2009") %>%
-  dplyr::select(-Whites, -Blacks, -FemaleBachelors, -MaleBachelors, -TotalPoverty)
+  dplyr::select(-Whites, -Blacks, -FemaleBachelors, -MaleBachelors, -TotalPoverty, -CarCommute, -PubCommute, -CivLabForceEmployed)
 
 
 # ---- Washington, DC - Census Data - 2017 -----
@@ -126,14 +135,20 @@ tracts2017 <-
          MaleBachelors = B15001_009E,
          MedHHInc = B19013_001E, 
          MedRent = B25058_001E,
-         TotalPoverty = B06012_002E) %>%
-  dplyr::select(-NAME, -starts_with("B0"), -starts_with("B1"), -starts_with("B2")) %>%
+         TotalPoverty = B06012_002E,
+         CarCommute = DP03_0019PE,
+         PubCommute = DP03_0021PE,
+         CivLabForceEmployed = DP03_0004PE) %>%
+  dplyr::select(-NAME, -starts_with("B0"), -starts_with("B1"), -starts_with("B2"), -starts_with("D")) %>%
   mutate(pctWhite = ifelse(TotalPop > 0, Whites / TotalPop,0),
          pctBlack = ifelse(TotalPop > 0, Blacks / TotalPop,0),
          pctBachelors = ifelse(TotalPop > 0, ((FemaleBachelors + MaleBachelors) / TotalPop),0),
          pctPoverty = ifelse(TotalPop > 0, TotalPoverty / TotalPop, 0),
+         pctCarCommute = ifelse(CarCommute < 100, CarCommute* 0.01, 0),
+         pctPubCommute = ifelse(PubCommute < 100, PubCommute* 0.01, 0),
+         pctEmployed = ifelse(CivLabForceEmployed < 100, CivLabForceEmployed* 0.01, 0),
          year = "2017") %>%
-  dplyr::select(-Whites, -Blacks, -FemaleBachelors, -MaleBachelors, -TotalPoverty) 
+  dplyr::select(-Whites, -Blacks, -FemaleBachelors, -MaleBachelors, -TotalPoverty, -CarCommute, -PubCommute, -CivLabForceEmployed)
 
 # --- Combining 2009 and 2017 data ----
 
@@ -319,7 +334,10 @@ allTracts.Summary <-
             Percent_White = mean(pctWhite, na.rm = T),
             Percent_Black = mean(pctBlack, na.rm = T),
             Percent_Bach = mean(pctBachelors, na.rm = T),
-            Percent_Poverty = mean(pctPoverty, na.rm = T))
+            Percent_Poverty = mean(pctPoverty, na.rm = T),
+            ercent_CarCommute = mean(pctCarCommute, na.rm = T),
+            Percent_PubCommute = mean(pctPubCommute, na.rm = T),
+            Percent_Employed = mean(pctEmployed, na.rm = T))
 
 kable(allTracts.Summary) %>%
   kable_styling() %>%
