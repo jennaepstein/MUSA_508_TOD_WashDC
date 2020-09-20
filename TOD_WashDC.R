@@ -417,3 +417,26 @@ MedRentSymbolMap <-
 MedRentSymbolMap
 
 
+
+#Pulling in DC crime data in 2017
+DC_2009_Crime <-
+  rbind(
+    st_read("https://opendata.arcgis.com/datasets/73cd2f2858714cd1a7e2859f8e6e4de4_33.geojson") %>% 
+      select(OBJECTID, OFFENSE)) %>%
+  st_transform(st_crs(tracts2009))
+  
+  
+DC_2017_Crime <- 
+  rbind(
+    st_read("https://opendata.arcgis.com/datasets/6af5cb8dc38e4bcbac8168b27ee104aa_38.geojson") %>% 
+      select(OBJECTID, OFFENSE)) %>%
+    st_transform(st_crs(tracts2017))
+
+#Mapping DC crime data --- NOT FINISHED NEED HELP!!!!! haha
+ggplot(subset(DC_2017_Crime, OFFENSE =="ROBBERY")) + 
+  geom_point(size=2)
+  geom_sf(data=st_union(tracts2017)) +
+  labs(title="DC crime incidents in 2017", 
+       subtitle="Washington, DC", 
+       caption="Source: OpenDataDC") +
+  mapTheme()
