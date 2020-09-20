@@ -91,7 +91,7 @@ tracts2009 <-
           state=11, 
           geometry=T, 
           output="wide") %>%
-  st_transform('ESRI:102685') %>%
+  st_transform('ESRI:102685') %>% # using the state plane of Maryland for a projection
   rename(TotalPop = B25026_001E, 
          Whites = B02001_002E,
          Blacks = B02001_003E,
