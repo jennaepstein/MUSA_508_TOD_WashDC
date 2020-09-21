@@ -379,7 +379,8 @@ allTracts.Summary <-
             Percent_Bach = mean(pctBachelors, na.rm = T),
             Percent_Poverty = mean(pctPoverty, na.rm = T),
             Percent_CarCommute = mean(pctCarCommute, na.rm = T),
-            Percent_PubCommute = mean(pctPubCommute, na.rm = T))
+            Percent_PubCommute = mean(pctPubCommute, na.rm = T),
+            Median_Income = mean(MedInc, na.rm = T))
             
 kable(allTracts.Summary) %>%
   kable_styling() %>%
