@@ -73,7 +73,7 @@ paletteTOD <- c("#fdb863", "#80cdc1")
 
 # Creating a vector of census variables, since we have several.
 
-acs_vars_DC <- c("B25026_001E", # Estimate!!Total population in occupied housing units
+acs_vars_DC <- c("B02001_001E", # Estimate!!Total population by race
                 "B02001_002E", # People describing themselves as "white alone"
                 "B02001_003E", # People describing themselves as "black" or "african-american" alone
                 "B15001_050E", # Females with bachelors degrees
@@ -81,9 +81,14 @@ acs_vars_DC <- c("B25026_001E", # Estimate!!Total population in occupied housing
                 "B19013_001E", # Median HH income
                 "B25058_001E", # Median rent
                 "B06012_002E", # Total poverty
-                "DP03_0019PE", # Commute by car %
-                "DP03_0021PE", # Commute by Public Transportation %
-                "DP03_0004PE") # Civilian labor force employed %
+                "B08301_001E", # People who have means of transportation to work
+                "B08301_002E", # Total people who commute by car, truck, or van
+                "B08301_010E") # Total people who commute by public transportation"
+
+# TO ADD:
+# "TOTAL", # Estimate!!Total population that identifies as "hispanic" or "latino" alone
+# "B03002_012E", # People describing themselves as "hispanic" or latino" alone
+# MEDIAN INCOME
 
 
 # ---- Washington, DC - Census Data - 2009 -----
@@ -95,28 +100,29 @@ tracts2009 <-
           geometry=T, 
           output="wide") %>%
   st_transform('ESRI:102685') %>% # using the state plane of Maryland for a projection
-  rename(TotalPop = B25026_001E, 
+  rename(TotalPop = B02001_001E, 
          Whites = B02001_002E,
          Blacks = B02001_003E,
+         # TO ADD - HISPANICS (number) #
          FemaleBachelors = B15001_050E, 
          MaleBachelors = B15001_009E,
          MedHHInc = B19013_001E, 
          MedRent = B25058_001E,
          TotalPoverty = B06012_002E,
-         CarCommute = DP03_0019PE,
-         PubCommute = DP03_0021PE,
-         CivLabForceEmployed = DP03_0004PE) %>%
-  dplyr::select(-NAME, -starts_with("B0"), -starts_with("B1"), -starts_with("B2"), -starts_with("D")) %>%
+         TotalCommute = B08301_001E,
+         CarCommute = B08301_002E,
+         PubCommute = B08301_010E) %>%
+  dplyr::select(-NAME, -starts_with("B0"), -starts_with("B1"), -starts_with("B2")) %>%
   mutate(pctWhite = ifelse(TotalPop > 0, Whites / TotalPop,0),
          pctBlack = ifelse(TotalPop > 0, Blacks / TotalPop,0),
+         # to add - pctHispanic"
+         # to add - "pctBlackHispanic"
          pctBachelors = ifelse(TotalPop > 0, ((FemaleBachelors + MaleBachelors) / TotalPop),0),
          pctPoverty = ifelse(TotalPop > 0, TotalPoverty / TotalPop, 0),
-         pctCarCommute = ifelse(CarCommute < 100, CarCommute* 0.01, 0),
-         pctPubCommute = ifelse(PubCommute < 100, PubCommute* 0.01, 0),
-         pctEmployed = ifelse(CivLabForceEmployed < 100, CivLabForceEmployed* 0.01, 0),
+         pctCarCommute = ifelse(TotalCommute > 0, CarCommute / TotalCommute,0),
+         pctPubCommute = ifelse(TotalCommute > 0, PubCommute / TotalCommute,0),
          year = "2009") %>%
-  dplyr::select(-Whites, -Blacks, -FemaleBachelors, -MaleBachelors, -TotalPoverty, -CarCommute, -PubCommute, -CivLabForceEmployed)
-
+  dplyr::select(-Whites, -Blacks, -FemaleBachelors, -MaleBachelors, -TotalPoverty, -CarCommute, -PubCommute, -TotalCommute)
 
 # ---- Washington, DC - Census Data - 2017 -----
 
@@ -128,7 +134,7 @@ tracts2017 <-
           geometry=T, 
           output="wide") %>%
   st_transform('ESRI:102685') %>%
-  rename(TotalPop = B25026_001E, 
+  rename(TotalPop = B02001_001E, 
          Whites = B02001_002E,
          Blacks = B02001_003E,
          FemaleBachelors = B15001_050E, 
@@ -136,19 +142,18 @@ tracts2017 <-
          MedHHInc = B19013_001E, 
          MedRent = B25058_001E,
          TotalPoverty = B06012_002E,
-         CarCommute = DP03_0019PE,
-         PubCommute = DP03_0021PE,
-         CivLabForceEmployed = DP03_0004PE) %>%
-  dplyr::select(-NAME, -starts_with("B0"), -starts_with("B1"), -starts_with("B2"), -starts_with("D")) %>%
+         TotalCommute = B08301_001E,
+         CarCommute = B08301_002E,
+         PubCommute = B08301_010E) %>%
+  dplyr::select(-NAME, -starts_with("B0"), -starts_with("B1"), -starts_with("B2")) %>%
   mutate(pctWhite = ifelse(TotalPop > 0, Whites / TotalPop,0),
          pctBlack = ifelse(TotalPop > 0, Blacks / TotalPop,0),
          pctBachelors = ifelse(TotalPop > 0, ((FemaleBachelors + MaleBachelors) / TotalPop),0),
          pctPoverty = ifelse(TotalPop > 0, TotalPoverty / TotalPop, 0),
-         pctCarCommute = ifelse(CarCommute < 100, CarCommute* 0.01, 0),
-         pctPubCommute = ifelse(PubCommute < 100, PubCommute* 0.01, 0),
-         pctEmployed = ifelse(CivLabForceEmployed < 100, CivLabForceEmployed* 0.01, 0),
+         pctCarCommute = ifelse(TotalCommute > 0, CarCommute / TotalCommute,0),
+         pctPubCommute = ifelse(TotalCommute > 0, PubCommute / TotalCommute,0),
          year = "2017") %>%
-  dplyr::select(-Whites, -Blacks, -FemaleBachelors, -MaleBachelors, -TotalPoverty, -CarCommute, -PubCommute, -CivLabForceEmployed)
+  dplyr::select(-Whites, -Blacks, -FemaleBachelors, -MaleBachelors, -TotalPoverty, -CarCommute, -PubCommute, -TotalCommute)
 
 # --- Combining 2009 and 2017 data ----
 
@@ -292,28 +297,30 @@ TimeSpaceGrps <-
   theme(plot.title = element_text(size=22))
 TimeSpaceGrps
 
-# Median Rent
+# TASK 2, PART A: Mapping Median Rent
+## NEED TO DO: change NA color/texture only
 
 MedRent <-
   ggplot(allTracts.group)+
   geom_sf(data = st_union(tracts2009))+
   geom_sf(aes(fill = q5(MedRent.inf)), color = NA) +
-  geom_sf(data = buffer, fill = "transparent",color = "red")+
+  geom_sf(data = buffer, fill = "transparent",color = "red", size = 1.5)+
   scale_fill_manual(values = palette5,
                     labels = qBr(allTracts.group, "MedRent.inf"),
-                    name = "Median Rent ($)\n(Quintile Breaks)") +
+                    name = "Median Rent ($)\n(Quintile Breaks)") + 
   labs(title = "Median Rent 2009-2017", subtitle = "Real Dollars; Red border denotes areas close to WMATA stations") +
   facet_wrap(~year)+
   mapTheme() + 
   theme(plot.title = element_text(size=22))
 MedRent
-  
+
+# USE THIS ONE, IT HAS LINES!
 MedRentWmataLines <-
   ggplot(allTracts.group)+
   geom_sf(data = st_union(tracts2009))+
   geom_sf(aes(fill = q5(MedRent.inf)), color = NA) +
-  geom_sf(data = buffer, fill = "transparent",color = "red")+
-  geom_sf(data = wmataLines, color = "black")+
+  geom_sf(data = buffer, fill = "transparent",color = "red", size = 1.5)+
+  geom_sf(data = wmataLines, color = "black", size = 1)+
   scale_fill_manual(values = palette5,
                     labels = qBr(allTracts.group, "MedRent.inf"),
                     name = "Median Rent ($)\n(Quintile Breaks)") +
@@ -322,9 +329,28 @@ MedRentWmataLines <-
   mapTheme() + 
   theme(plot.title = element_text(size=22))
 MedRentWmataLines
-  
 
-# --- TOD INDICATOR TABLES ---- if we end up choosing other variables, we can just swap things out
+# TASK 2, PART B: MAPPING [PERCENT WHITE]
+
+# TASK 2, PART C: MAPPING [VARIABLE]
+
+# TASK 2, PART D: MAPPING [PUB COMMUTE] -- what is going on with the legend?! qbr again
+pctPubCommuteWmataLines <-
+  ggplot(allTracts.group)+
+  geom_sf(data = st_union(tracts2009))+
+  geom_sf(aes(fill = q5(pctPubCommute)), color = NA) +
+  geom_sf(data = buffer, fill = "transparent",color = "red", size = 1.5)+
+  geom_sf(data = wmataLines, color = "black", size = 1)+
+  scale_fill_manual(values = palette5,
+                    labels = qBr(allTracts.group, "pctPubCommute"),
+                    name = "Pct Public Transportation Commuters \n(Quintile Breaks)") +
+  labs(title = "Percent of Commuters using Public Transportation, 2009-2017", subtitle = "Red border denotes areas close to WMATA stations") +
+  facet_wrap(~year)+
+  mapTheme() + 
+  theme(plot.title = element_text(size=22))
+pctPubCommuteWmataLines
+
+# --- TOD INDICATOR TABLES ---- swap these out once we determine final variables we are using
 
 allTracts.Summary <- 
   st_drop_geometry(allTracts.group) %>%
@@ -335,10 +361,9 @@ allTracts.Summary <-
             Percent_Black = mean(pctBlack, na.rm = T),
             Percent_Bach = mean(pctBachelors, na.rm = T),
             Percent_Poverty = mean(pctPoverty, na.rm = T),
-            ercent_CarCommute = mean(pctCarCommute, na.rm = T),
-            Percent_PubCommute = mean(pctPubCommute, na.rm = T),
-            Percent_Employed = mean(pctEmployed, na.rm = T))
-
+            Percent_CarCommute = mean(pctCarCommute, na.rm = T),
+            Percent_PubCommute = mean(pctPubCommute, na.rm = T))
+            
 kable(allTracts.Summary) %>%
   kable_styling() %>%
   footnote(general_title = "\n",
@@ -372,7 +397,8 @@ allTracts.Summary %>%
 ########################
 # TASK: Create two graduated symbol maps of population and rent within 1/2 mi of each transit station. Google for more information, but a graduate symbol map represents quantities for each transit station proportionally.
 
-# Getting centroids for tracts and adding them to dataframe
+# Getting centroids for tracts and adding them to dataframe. Grabbing from selectCentroids...but that is based on 2009 only.
+# HOW CAN WE DIFFERENTIATE BETWEEN CENTROIDS ON 2009 VS 2017 TRACTS IN THE FACET WRAP FOR 2 YEARS. Using allTracts wasn't working.
 DC_tract_centroids <- sf::st_centroid(selectCentroids)
 
 DC_tract_centroids <- DC_tract_centroids %>%
@@ -385,22 +411,23 @@ DC_tract_centroids
 # Population - likely need to adjust the breaks in the scale. Hard to tell difference between population over the two years also. Need to include circles for metro stops in legend.
 PopulationSymbolMap <-
   ggplot(DC_tract_centroids) + 
-    geom_sf()+
-    geom_sf(data=allTracts)+
-      aes()+
-    geom_point(aes(x=lat, y=lon, size = TotalPop), data = DC_tract_centroids, color="blue", alpha=0.5) +
+  geom_sf()+
+  geom_sf(data=allTracts)+
+  aes()+
+  geom_point(aes(x=lat, y=lon, size = TotalPop), data = DC_tract_centroids, color="blue", alpha=0.5) +
   facet_wrap(~year) +    
   scale_size_area() +
-      geom_sf(data=wmataStops, size=1, color="black") + 
-        aes() +
+  geom_sf(data=wmataLines, size=1, color="black") + 
+  aes() +
   labs(title="Population in Census Tracts within 1/2 mi. of WMATA Stops", 
-     subtitle="Washington, DC", 
-     caption="Data: US Census Bureau; opendata.dc.gov") +
+       subtitle="Washington, DC", 
+       caption="Data: US Census Bureau; opendata.dc.gov") +
   mapTheme()
 PopulationSymbolMap
-
   
-#MedRent - needs some styling help, also need the legend for medrent fixed (MedRent.inf wasn't working. and need to include metro stops circle in legend.
+#MedRent graduated symbol map - NEEDS MAJOR HELP
+# same as above,need to differentiate census tracts 2009 from 2017, but how can we if we are using alltracts? need to make sure we only grab sense tracts within the buffer
+# also need the legend for medrent fixed (MedRent.inf wasn't working. and need to include metro stops circle in legend.
 MedRentSymbolMap <-
     ggplot(DC_tract_centroids) + 
     geom_sf()+
@@ -412,31 +439,60 @@ MedRentSymbolMap <-
     aes() +
     labs(title="Median Rent in Census Tracts within 1/2 mi. of WMATA Stops", 
          subtitle="Washington, DC", 
-         caption="Source: OpenDataDC") +
+         caption="Data: US Census Bureau; opendata.dc.gov") +
     mapTheme()
 MedRentSymbolMap
 
+# CRIME DATA ---------------------------
 
+# Pulling in DC crime data in 2009 and 2017
 
-#Pulling in DC crime data in 2017
+# 2009
 DC_2009_Crime <-
   rbind(
     st_read("https://opendata.arcgis.com/datasets/73cd2f2858714cd1a7e2859f8e6e4de4_33.geojson") %>% 
       select(OBJECTID, OFFENSE)) %>%
   st_transform(st_crs(tracts2009))
+
+# getting lat lon 2009
+DC_2009_Crime <- DC_2009_Crime %>%
+  dplyr::mutate(lat = sf::st_coordinates(.)[,1],
+                lon = sf::st_coordinates(.)[,2])
   
-  
+# 2017
 DC_2017_Crime <- 
   rbind(
     st_read("https://opendata.arcgis.com/datasets/6af5cb8dc38e4bcbac8168b27ee104aa_38.geojson") %>% 
       select(OBJECTID, OFFENSE)) %>%
     st_transform(st_crs(tracts2017))
 
-#Mapping DC crime data --- NOT FINISHED NEED HELP!!!!! haha
+# getting lat lon 2017
+DC_2017_Crime <- DC_2017_Crime %>%
+  dplyr::mutate(lat = sf::st_coordinates(.)[,1],
+                lon = sf::st_coordinates(.)[,2])
+
+# Mapping DC crime data 2009
+ggplot(subset(DC_2009_Crime, OFFENSE =="ROBBERY")) + 
+  geom_sf(data = tracts2009,
+          aes(fill = q5(MedRent)), color = NA) +
+  scale_fill_manual(values = palette5)+
+  geom_point(aes(x=lat, y=lon), size=0.01) +
+  geom_sf(data=wmataStops, size=3, shape=17, color="grey")+
+  geom_sf(data=buffer, fill="transparent", color="red", size=1.5)+
+  labs(title="DC crime incidents in 2009", 
+       subtitle="Washington, DC", 
+       caption="Source: opendata.dc.gov") +
+  mapTheme()
+
+# Mapping DC crime data 2017
 ggplot(subset(DC_2017_Crime, OFFENSE =="ROBBERY")) + 
-  geom_point(size=2)
-  geom_sf(data=st_union(tracts2017)) +
+  geom_sf(data = tracts2017,
+          aes(fill = q5(MedRent)), color = NA) +
+  scale_fill_manual(values = palette5)+
+  geom_point(aes(x=lat, y=lon), size=0.01)+
+  geom_sf(data=wmataStops, size=3, shape=17, color="grey")+
+  geom_sf(data=buffer, fill="transparent", color="red", size=1.5)+
   labs(title="DC crime incidents in 2017", 
        subtitle="Washington, DC", 
-       caption="Source: OpenDataDC") +
+       caption="Source: opendata.dc.gov") +
   mapTheme()
