@@ -83,12 +83,9 @@ acs_vars_DC <- c("B02001_001E", # Estimate!!Total population by race
                 "B06012_002E", # Total poverty
                 "B08301_001E", # People who have means of transportation to work
                 "B08301_002E", # Total people who commute by car, truck, or van
-                "B08301_010E") # Total people who commute by public transportation"
-
-# TO ADD:
-# "TOTAL", # Estimate!!Total population that identifies as "hispanic" or "latino" alone
-# "B03002_012E", # People describing themselves as "hispanic" or latino" alone
-# MEDIAN INCOME
+                "B08301_010E", # Total people who commute by public transportation"
+                "B03002_012E", # Estimate Total Hispanic or Latino by race
+                "B19326_001E") # Median income in past 12 months (inflation-adjusted)
 
 
 # ---- Washington, DC - Census Data - 2009 -----
@@ -111,18 +108,20 @@ tracts2009 <-
          TotalPoverty = B06012_002E,
          TotalCommute = B08301_001E,
          CarCommute = B08301_002E,
-         PubCommute = B08301_010E) %>%
+         PubCommute = B08301_010E,
+         TotalHispanic = B03002_012E,
+         MedInc = B19326_001E) %>%
   dplyr::select(-NAME, -starts_with("B0"), -starts_with("B1"), -starts_with("B2")) %>%
   mutate(pctWhite = ifelse(TotalPop > 0, Whites / TotalPop,0),
          pctBlack = ifelse(TotalPop > 0, Blacks / TotalPop,0),
-         # to add - pctHispanic"
-         # to add - "pctBlackHispanic"
+         pctHis = ifelse(TotalPop >0, TotalHispanic/TotalPop,0),
+         pctBlackorHis = ifelse (TotalPop>0, (Blacks+TotalHispanic)/TotalPop,0),
          pctBachelors = ifelse(TotalPop > 0, ((FemaleBachelors + MaleBachelors) / TotalPop),0),
          pctPoverty = ifelse(TotalPop > 0, TotalPoverty / TotalPop, 0),
          pctCarCommute = ifelse(TotalCommute > 0, CarCommute / TotalCommute,0),
          pctPubCommute = ifelse(TotalCommute > 0, PubCommute / TotalCommute,0),
          year = "2009") %>%
-  dplyr::select(-Whites, -Blacks, -FemaleBachelors, -MaleBachelors, -TotalPoverty, -CarCommute, -PubCommute, -TotalCommute)
+  dplyr::select(-Whites, -Blacks, -FemaleBachelors, -MaleBachelors, -TotalPoverty, -CarCommute, -PubCommute, -TotalCommute, -TotalHispanic)
 
 # ---- Washington, DC - Census Data - 2017 -----
 
@@ -144,16 +143,20 @@ tracts2017 <-
          TotalPoverty = B06012_002E,
          TotalCommute = B08301_001E,
          CarCommute = B08301_002E,
-         PubCommute = B08301_010E) %>%
+         PubCommute = B08301_010E,
+         TotalHispanic = B03002_012E,
+         MedInc = B19326_001E) %>%
   dplyr::select(-NAME, -starts_with("B0"), -starts_with("B1"), -starts_with("B2")) %>%
   mutate(pctWhite = ifelse(TotalPop > 0, Whites / TotalPop,0),
          pctBlack = ifelse(TotalPop > 0, Blacks / TotalPop,0),
+         pctHis = ifelse(TotalPop >0, TotalHispanic/TotalPop,0),
+         pctBlackorHis = ifelse (TotalPop>0, (Blacks+TotalHispanic)/TotalPop,0),
          pctBachelors = ifelse(TotalPop > 0, ((FemaleBachelors + MaleBachelors) / TotalPop),0),
          pctPoverty = ifelse(TotalPop > 0, TotalPoverty / TotalPop, 0),
          pctCarCommute = ifelse(TotalCommute > 0, CarCommute / TotalCommute,0),
          pctPubCommute = ifelse(TotalCommute > 0, PubCommute / TotalCommute,0),
          year = "2017") %>%
-  dplyr::select(-Whites, -Blacks, -FemaleBachelors, -MaleBachelors, -TotalPoverty, -CarCommute, -PubCommute, -TotalCommute)
+  dplyr::select(-Whites, -Blacks, -FemaleBachelors, -MaleBachelors, -TotalPoverty, -CarCommute, -PubCommute, -TotalCommute,-TotalHispanic)
 
 # --- Combining 2009 and 2017 data ----
 
@@ -359,6 +362,8 @@ allTracts.Summary <-
             Population = mean(TotalPop, na.rm = T),
             Percent_White = mean(pctWhite, na.rm = T),
             Percent_Black = mean(pctBlack, na.rm = T),
+            Percent_HispanicLatino = mean(pctHis, na.rm=T),
+            Percent_BlackorHispanic = mean (pctBlackorHis, na.rom=T),
             Percent_Bach = mean(pctBachelors, na.rm = T),
             Percent_Poverty = mean(pctPoverty, na.rm = T),
             Percent_CarCommute = mean(pctCarCommute, na.rm = T),
