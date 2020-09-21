@@ -1,4 +1,4 @@
-# SET UP
+# SET UP --------------------------------------------------------------------
 library(tidyverse)
 library(tidycensus)
 library(sf)
@@ -69,7 +69,7 @@ palette5 <- c("#f0f9e8","#bae4bc","#7bccc4","#43a2ca","#0868ac")
 paletteTOD <- c("#fdb863", "#80cdc1")
 
 
-# Downloading & wrangling the Census data
+# TASK 1: DATA WRANGLING -------------------------------------------------------
 
 # Creating a vector of census variables, since we have several.
 
@@ -88,7 +88,7 @@ acs_vars_DC <- c("B02001_001E", # Estimate!!Total population by race
                 "B19326_001E") # Median income in past 12 months (inflation-adjusted)
 
 
-# ---- Washington, DC - Census Data - 2009 -----
+# ---- Washington, DC - Census Data - 2009 ----
 tracts2009 <- 
   get_acs(geography = "tract", 
           variables = acs_vars_DC, 
@@ -100,7 +100,6 @@ tracts2009 <-
   rename(TotalPop = B02001_001E, 
          Whites = B02001_002E,
          Blacks = B02001_003E,
-         # TO ADD - HISPANICS (number) #
          FemaleBachelors = B15001_050E, 
          MaleBachelors = B15001_009E,
          MedHHInc = B19013_001E, 
@@ -123,7 +122,7 @@ tracts2009 <-
          year = "2009") %>%
   dplyr::select(-Whites, -Blacks, -FemaleBachelors, -MaleBachelors, -TotalPoverty, -CarCommute, -PubCommute, -TotalCommute, -TotalHispanic)
 
-# ---- Washington, DC - Census Data - 2017 -----
+# ---- Washington, DC - Census Data - 2017 ----
 
 tracts2017 <- 
   get_acs(geography = "tract", 
@@ -158,11 +157,11 @@ tracts2017 <-
          year = "2017") %>%
   dplyr::select(-Whites, -Blacks, -FemaleBachelors, -MaleBachelors, -TotalPoverty, -CarCommute, -PubCommute, -TotalCommute,-TotalHispanic)
 
-# --- Combining 2009 and 2017 data ----
+# ---- Combining 2009 and 2017 data ----
 
 allTracts <- rbind(tracts2009,tracts2017)
 
-# ---- Wrangling Transit Open Data -----
+# ---- Wrangling Transit Open Data ----
 
 wmataStops <- 
   rbind(
@@ -180,7 +179,7 @@ wmataStops <- wmataStops %>%
   mutate(LINE = replace(LINE,LINE == "grn", "green"))
 wmataStops
 
-# Visualize it
+# ---- Visualize wmata stops ----
 
 ggplot() + 
   geom_sf(data=st_union(tracts2009)) +
@@ -190,10 +189,10 @@ ggplot() +
   scale_colour_manual(values = c("red" = "red", "orange" = "orange", "yellow" = "yellow", "green" = "green", "blue" = "blue", "silver" = "gray")) +
   labs(title="WMATA Stops", 
        subtitle="Washington, DC", 
-       caption="Source: OpenDataDC") +
+       caption="Source: opendata.dc.gov") +
   mapTheme()
 
-# Bringing in Lines, to use later for reference
+# ---- Bringing in wmata Line data ----
 wmataLines <- 
   rbind(
     st_read("https://opendata.arcgis.com/datasets/a29b9dbb2f00459db2b0c3c56faca297_106.geojson") %>%
@@ -204,7 +203,7 @@ wmataLines
 
 # --- Relating WMATA Stops and Tracts ----
 
-# Create buffers (in feet - note the CRS) around WMATA stops -
+# Creating buffers (in feet - note the CRS) around WMATA stops
 # Both a buffer for each stop, and a union of the buffers, and then bind these objects together
 
 wmataBuffers <- 
@@ -216,7 +215,7 @@ wmataBuffers <-
       st_sf() %>%
       mutate(Legend = "Unioned Buffer"))
 
-# A small multiple "facet_wrap" plot showing both buffers
+# ---- Small multiple facet_wrap plot showing both buffers ----
 
 ggplot() +
   geom_sf(data=wmataBuffers) +
@@ -229,13 +228,17 @@ ggplot() +
 # sf object with ONLY the unioned buffer
 buffer <- filter(wmataBuffers, Legend=="Unioned Buffer")
 
-# Clip the 2009 tracts by seeing which tracts intersect (st_intersection) with the buffer and clipping out only those areas
+# Showing that we examine the three different spatial selection types 
+# to further illustrate why the select by centroids method is best
+# based on tracts2009
+
+# Clip
 clip <- 
   st_intersection(buffer, tracts2009) %>%
   dplyr::select(TotalPop) %>%
   mutate(Selection_Type = "Clip")
 
-# Spatial selection to see which tracts touch the buffer
+# Spatial selection
 selection <- 
   tracts2009[buffer,] %>%
   dplyr::select(TotalPop) %>%
@@ -250,13 +253,13 @@ selectCentroids <-
   dplyr::select(TotalPop) %>%
   mutate(Selection_Type = "Select by Centroids")
 
-# Examining the three different spatial selection types to further illustrate why select by centroids is best
-# Using Total Population as the fill
+
+# Visualizing using Total Population as the fill
 
 allTracts.group.TotalPop <- 
   rbind(clip, selection, selectCentroids)
     
-SpatialSelectionTypes <-
+SpatialSelectionTypes2009tracts <-
       ggplot(allTracts.group.TotalPop)+
       geom_sf(data = st_union(tracts2009))+
       geom_sf(aes(fill = TotalPop)) +
@@ -264,14 +267,11 @@ SpatialSelectionTypes <-
       facet_wrap(~Selection_Type) +
       mapTheme() + 
       theme(plot.title = element_text(size=20))
-SpatialSelectionTypes
+SpatialSelectionTypes2009tracts
 
-# ---- INDICATOR MAPS ---- 
-
-# We do our centroid joins as above, and then do a "disjoin" to get the ones that *don't* join, and add them all together.
-# Do this operation and then examine it.
-# What represents the joins/doesn't join dichotomy?
-# Note that this contains a correct 2009-2017 inflation calculation
+# Centroid joins as above, then "disjoin" to get the ones that *don't* join
+# Then  add them all together
+# Contains a correct 2009-2017 inflation calculation
 
 allTracts.group <- 
   rbind(
@@ -287,7 +287,7 @@ allTracts.group <-
       mutate(TOD = "Non-TOD")) %>%
   mutate(MedRent.inf = ifelse(year == "2009", MedRent * 1.14, MedRent)) 
 
-# Time/Space Groups
+# Visualize Time/Space Groups
 
 TimeSpaceGrps <-
   ggplot(allTracts.group)+
@@ -300,14 +300,17 @@ TimeSpaceGrps <-
   theme(plot.title = element_text(size=22))
 TimeSpaceGrps
 
-# TASK 2, PART A: Mapping Median Rent
+# TASK 2 -----------------------------------------------------------------------
+# Four small-multiple (2009 & 2017) visualizations comparing four selected Census variables across time
+
+# TASK 2, PART A: MAPPING MEDIAN RENT
 ## NEED TO DO: change NA color/texture only
 
 MedRent <-
   ggplot(allTracts.group)+
   geom_sf(data = st_union(tracts2009))+
   geom_sf(aes(fill = q5(MedRent.inf)), color = NA) +
-  geom_sf(data = buffer, fill = "transparent",color = "red", size = 1.5)+
+  geom_sf(data = buffer, fill = "transparent",color = "orange", size = 1.5)+
   scale_fill_manual(values = palette5,
                     labels = qBr(allTracts.group, "MedRent.inf"),
                     name = "Median Rent ($)\n(Quintile Breaks)") + 
@@ -317,12 +320,12 @@ MedRent <-
   theme(plot.title = element_text(size=22))
 MedRent
 
-# USE THIS ONE, IT HAS LINES!
+# USE THIS ONE for 2a, IT HAS WMATA LINES - LOOKS CLEANER
 MedRentWmataLines <-
   ggplot(allTracts.group)+
   geom_sf(data = st_union(tracts2009))+
   geom_sf(aes(fill = q5(MedRent.inf)), color = NA) +
-  geom_sf(data = buffer, fill = "transparent",color = "red", size = 1.5)+
+  geom_sf(data = buffer, fill = "transparent",color = "orange", size = 1.5)+
   geom_sf(data = wmataLines, color = "black", size = 1)+
   scale_fill_manual(values = palette5,
                     labels = qBr(allTracts.group, "MedRent.inf"),
@@ -353,8 +356,10 @@ pctPubCommuteWmataLines <-
   theme(plot.title = element_text(size=22))
 pctPubCommuteWmataLines
 
-# --- TOD INDICATOR TABLES ---- swap these out once we determine final variables we are using
+# TASKS 3 & 4: One grouped bar plot making these same comparisons
+## NEED TO DO - swap out variables in TOD indicator group bar plots and tables once we determine final variables we are using
 
+# TASK 4: Creating table -------------------------------------------------------
 allTracts.Summary <- 
   st_drop_geometry(allTracts.group) %>%
   group_by(year, TOD) %>%
@@ -374,8 +379,6 @@ kable(allTracts.Summary) %>%
   footnote(general_title = "\n",
            general = "Table caption")
 
-# Let's make some comparisons and speculate about the willingness to pay and demographics in these areas 2009-2017 (see the 2000 data in the text too)
-
 allTracts.Summary %>%
   unite(year.TOD, year, TOD, sep = ": ", remove = T) %>%
   gather(Variable, Value, -year.TOD) %>%
@@ -386,10 +389,7 @@ allTracts.Summary %>%
   footnote(general_title = "\n",
            general = "Summary for All Tracts in Washington, DC")
 
-# --- TOD INDICATOR PLOTS ------ if we end up choosing other variables, we can just swap things out
-
-# Creating small multiple plots using the "gather" command to go from wide to long
-
+# TASK 3: Group bar plot making these same comparisons for TOD indicators ------
 allTracts.Summary %>%
   gather(Variable, Value, -year, -TOD) %>%
   ggplot(aes(year, Value, fill = TOD)) +
@@ -399,30 +399,31 @@ allTracts.Summary %>%
   labs(title = "Indicator differences across time and space") +
   plotTheme() + theme(legend.position="bottom")
 
-########################
-# TASK: Create two graduated symbol maps of population and rent within 1/2 mi of each transit station. Google for more information, but a graduate symbol map represents quantities for each transit station proportionally.
+# TASK 5: Graduated symbol maps ------------------------------------------------
 
-# Getting centroids for tracts and adding them to dataframe. Grabbing from selectCentroids...but that is based on 2009 only.
-# HOW CAN WE DIFFERENTIATE BETWEEN CENTROIDS ON 2009 VS 2017 TRACTS IN THE FACET WRAP FOR 2 YEARS. Using allTracts wasn't working.
-DC_tract_centroids <- sf::st_centroid(selectCentroids)
+# More wrangling to get centroids for all tracts, both years, filtering by TOD
 
-DC_tract_centroids <- DC_tract_centroids %>%
+allTracts.group.TODonly <-
+  filter(allTracts.group, TOD =="TOD")
+
+allTracts.group.TODonly.centroids <- sf::st_centroid(allTracts.group.TODonly) %>%
   dplyr::mutate(lat = sf::st_coordinates(.)[,1],
                 lon = sf::st_coordinates(.)[,2])
-DC_tract_centroids
+  
+allTracts.group.TODonly.centroids
 
-
-# GRADUATED SYMBOL MAPS
-# Population - likely need to adjust the breaks in the scale. Hard to tell difference between population over the two years also. Need to include circles for metro stops in legend.
+# TASK 5, PART A: Graduated symbol map of population within 1/2 mi of each wmata station
+## Legend work needed - adjust breaks in population scale; add metro line. and do we want to include stations?
+ 
 PopulationSymbolMap <-
-  ggplot(DC_tract_centroids) + 
-  geom_sf()+
-  geom_sf(data=allTracts)+
-  aes()+
-  geom_point(aes(x=lat, y=lon, size = TotalPop), data = DC_tract_centroids, color="blue", alpha=0.5) +
+  ggplot ()+
+  geom_sf(data=allTracts.group, color="white", fill="gray")+
+  geom_point(aes(x=lat, y=lon, size = TotalPop), data = allTracts.group.TODonly.centroids, color="blue", alpha=0.5) +
   facet_wrap(~year) +    
   scale_size_area() +
   geom_sf(data=wmataLines, size=1, color="black") + 
+  aes() +
+  geom_sf(data=wmataStops, size=1.75, shape=21, color="black", fill="yellow") + 
   aes() +
   labs(title="Population in Census Tracts within 1/2 mi. of WMATA Stops", 
        subtitle="Washington, DC", 
@@ -430,17 +431,17 @@ PopulationSymbolMap <-
   mapTheme()
 PopulationSymbolMap
   
-#MedRent graduated symbol map - NEEDS MAJOR HELP
-# same as above,need to differentiate census tracts 2009 from 2017, but how can we if we are using alltracts? need to make sure we only grab sense tracts within the buffer
-# also need the legend for medrent fixed (MedRent.inf wasn't working. and need to include metro stops circle in legend.
+
+# TASK 5, PART B: Graduated symbol map of rent within 1/2 mi of each wmata station
+##  Legend work still to do: fix breaks; include metro stops circle
 MedRentSymbolMap <-
-    ggplot(DC_tract_centroids) + 
+    ggplot(allTracts.group.TODonly) + 
     geom_sf()+
     geom_sf(data = allTracts,
             aes(fill = q5(MedRent)), color = NA) +
               scale_fill_manual(values = palette5) +
     facet_wrap(~year)+
-    geom_sf(data=wmataStops, size=1, color="black")+
+    geom_sf(data=wmataStops, size=1.75, shape=21,color="black", fill="yellow")+
     aes() +
     labs(title="Median Rent in Census Tracts within 1/2 mi. of WMATA Stops", 
          subtitle="Washington, DC", 
