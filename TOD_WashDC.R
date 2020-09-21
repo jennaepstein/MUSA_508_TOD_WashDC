@@ -4,6 +4,10 @@ library(tidycensus)
 library(sf)
 library(kableExtra)
 library(tigris)
+library(RColorBrewer)
+library(viridis)
+
+
 
 options(scipen=999)
 options(tigris_class = "sf")
@@ -63,7 +67,10 @@ qBr <- function(df, variable, rnd) {
 q5 <- function(variable) {as.factor(ntile(variable, 5))}
 
 # Load hexadecimal color palette
-palette5 <- c("#f0f9e8","#bae4bc","#7bccc4","#43a2ca","#0868ac")
+# Discrete from YlGnBu colorbrewer palette
+# We can use colorbrewer package and YlGnBu for continuous scaling in graduated symbol map later
+# This way also the lightest is yellow, won't get confused with NA
+palette5 <- c("#ffffcc","#a1dab4","#41b6c4","#2c7fb8","#253494")
 
 # Here's a palette of two colors for TOD and Non-TOD, similar to what we used in lab.
 paletteTOD <- c("#fdb863", "#80cdc1")
@@ -325,7 +332,7 @@ MedRentWmataLines <-
   ggplot(allTracts.group)+
   geom_sf(data = st_union(tracts2009))+
   geom_sf(aes(fill = q5(MedRent.inf)), color = NA) +
-  geom_sf(data = buffer, fill = "transparent",color = "orange", size = 1.5)+
+  geom_sf(data = buffer, fill = "transparent",color = "red", size = 1.5)+
   geom_sf(data = wmataLines, color = "black", size = 1)+
   scale_fill_manual(values = palette5,
                     labels = qBr(allTracts.group, "MedRent.inf"),
@@ -377,7 +384,7 @@ allTracts.Summary <-
 kable(allTracts.Summary) %>%
   kable_styling() %>%
   footnote(general_title = "\n",
-           general = "Table caption")
+           general = "All Tracts Summary")
 
 allTracts.Summary %>%
   unite(year.TOD, year, TOD, sep = ": ", remove = T) %>%
@@ -413,41 +420,30 @@ allTracts.group.TODonly.centroids <- sf::st_centroid(allTracts.group.TODonly) %>
 allTracts.group.TODonly.centroids
 
 # TASK 5, PART A: Graduated symbol map of population within 1/2 mi of each wmata station
-## Legend work needed - adjust breaks in population scale; add metro line. and do we want to include stations?
+## Legend work needed - should we adjust breaks in population scale? Need to add metro line. and do we want to include stations?
+# Note that when run, it removes 5 rows containing missing values (geom_point). Not sure if this happens for the tracts that aren't the same year to year, or if has to do wiht the NAs for medrent.inf. Maybe we should discuss removing these tracts, for the purposes of our calculations.
+# also, if we need to do two separate maps (without a facet wrap), one for each year of tracts, we could try that...
  
-PopulationSymbolMap <-
+GraduatedSymbolMap <-
   ggplot ()+
   geom_sf(data=allTracts.group, color="white", fill="gray")+
-  geom_point(aes(x=lat, y=lon, size = TotalPop), data = allTracts.group.TODonly.centroids, color="blue", alpha=0.5) +
-  facet_wrap(~year) +    
-  scale_size_area() +
+  geom_point(data=allTracts.group.TODonly.centroids, aes(x=lat, y=lon, size=TotalPop, color=q5(MedRent.inf)))+
+  scale_size_area()+
+  scale_color_manual(values=palette5,
+                     labels = qBr(allTracts.group, "MedRent.inf"),
+                     name = "Median Rent ($) \n(Quintile Breaks)") +
+
   geom_sf(data=wmataLines, size=1, color="black") + 
   aes() +
   geom_sf(data=wmataStops, size=1.75, shape=21, color="black", fill="yellow") + 
   aes() +
-  labs(title="Population in Census Tracts within 1/2 mi. of WMATA Stops", 
+  labs(title="Population and Median Rent in Census Tracts within 1/2 mi. of WMATA Stops", 
        subtitle="Washington, DC", 
        caption="Data: US Census Bureau; opendata.dc.gov") +
+  facet_wrap(~year) +
   mapTheme()
-PopulationSymbolMap
+GraduatedSymbolMap
   
-
-# TASK 5, PART B: Graduated symbol map of rent within 1/2 mi of each wmata station
-##  Legend work still to do: fix breaks; include metro stops circle
-MedRentSymbolMap <-
-    ggplot(allTracts.group.TODonly) + 
-    geom_sf()+
-    geom_sf(data = allTracts,
-            aes(fill = q5(MedRent)), color = NA) +
-              scale_fill_manual(values = palette5) +
-    facet_wrap(~year)+
-    geom_sf(data=wmataStops, size=1.75, shape=21,color="black", fill="yellow")+
-    aes() +
-    labs(title="Median Rent in Census Tracts within 1/2 mi. of WMATA Stops", 
-         subtitle="Washington, DC", 
-         caption="Data: US Census Bureau; opendata.dc.gov") +
-    mapTheme()
-MedRentSymbolMap
 
 # CRIME DATA ---------------------------
 
@@ -482,10 +478,10 @@ ggplot(subset(DC_2009_Crime, OFFENSE =="ROBBERY")) +
   geom_sf(data = tracts2009,
           aes(fill = q5(MedRent)), color = NA) +
   scale_fill_manual(values = palette5)+
-  geom_point(aes(x=lat, y=lon), size=0.01) +
-  geom_sf(data=wmataStops, size=3, shape=17, color="grey")+
+  geom_point(aes(x=lat, y=lon), size=0.025) +
+  geom_sf(data=wmataStops, size=1.75, shape=22,color="black", fill="yellow")+
   geom_sf(data=buffer, fill="transparent", color="red", size=1.5)+
-  labs(title="DC crime incidents in 2009", 
+  labs(title="DC Crime: Robbery Incidents in 2009", 
        subtitle="Washington, DC", 
        caption="Source: opendata.dc.gov") +
   mapTheme()
@@ -496,9 +492,10 @@ ggplot(subset(DC_2017_Crime, OFFENSE =="ROBBERY")) +
           aes(fill = q5(MedRent)), color = NA) +
   scale_fill_manual(values = palette5)+
   geom_point(aes(x=lat, y=lon), size=0.01)+
-  geom_sf(data=wmataStops, size=3, shape=17, color="grey")+
+  geom_sf(data=wmataStops, size=1.75, shape=22,color="black", fill="yellow")+
   geom_sf(data=buffer, fill="transparent", color="red", size=1.5)+
-  labs(title="DC crime incidents in 2017", 
+  labs(title="DC Crime: Robbery Incidents in 2017", 
        subtitle="Washington, DC", 
        caption="Source: opendata.dc.gov") +
   mapTheme()
+
