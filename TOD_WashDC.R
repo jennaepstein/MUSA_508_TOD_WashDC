@@ -115,15 +115,15 @@ tracts2009 <-
          TotalHispanic = B03002_012E,
          MedInc = B19326_001E) %>%
   dplyr::select(-NAME, -starts_with("B0"), -starts_with("B1"), -starts_with("B2")) %>%
-  mutate(pctWhite = ifelse(TotalPop > 0, Whites / TotalPop,0),
-         pctBlack = ifelse(TotalPop > 0, Blacks / TotalPop,0),
-         pctHis = ifelse(TotalPop >0, TotalHispanic/TotalPop,0),
-         pctBlackorHis = ifelse (TotalPop>0, (Blacks+TotalHispanic)/TotalPop,0),
-         pctBachelors = ifelse(TotalPop > 0, ((FemaleBachelors + MaleBachelors) / TotalPop),0),
-         pctPoverty = ifelse(TotalPop > 0, TotalPoverty / TotalPop, 0),
-         pctCarCommute = ifelse(TotalCommute > 0, CarCommute / TotalCommute,0),
-         pctPubCommute = ifelse(TotalCommute > 0, PubCommute / TotalCommute,0),
-         year = "2009") %>%
+  mutate(pctWhite = (ifelse(TotalPop > 0, Whites / TotalPop,0))*100,
+         pctBlack = (ifelse(TotalPop > 0, Blacks / TotalPop,0))*100,
+         pctHis = (ifelse(TotalPop >0, TotalHispanic/TotalPop,0))*100,
+         pctBlackorHis = (ifelse (TotalPop>0, (Blacks+TotalHispanic)/TotalPop,0)) *100,
+         pctBachelors = (ifelse(TotalPop > 0, ((FemaleBachelors + MaleBachelors) / TotalPop),0)) *100,
+         pctPoverty = (ifelse(TotalPop > 0, TotalPoverty / TotalPop, 0))*100,
+         pctCarCommute = (ifelse(TotalCommute > 0, CarCommute / TotalCommute,0))*100,
+         pctPubCommute = (ifelse(TotalCommute > 0, PubCommute / TotalCommute,0))*100,
+         year = "2019") %>%
   dplyr::select(-Whites, -Blacks, -FemaleBachelors, -MaleBachelors, -TotalPoverty, -CarCommute, -PubCommute, -TotalCommute, -TotalHispanic)
 
 # ---- Washington, DC - Census Data - 2017 ----
@@ -150,14 +150,14 @@ tracts2017 <-
          TotalHispanic = B03002_012E,
          MedInc = B19326_001E) %>%
   dplyr::select(-NAME, -starts_with("B0"), -starts_with("B1"), -starts_with("B2")) %>%
-  mutate(pctWhite = ifelse(TotalPop > 0, Whites / TotalPop,0),
-         pctBlack = ifelse(TotalPop > 0, Blacks / TotalPop,0),
-         pctHis = ifelse(TotalPop >0, TotalHispanic/TotalPop,0),
-         pctBlackorHis = ifelse (TotalPop>0, (Blacks+TotalHispanic)/TotalPop,0),
-         pctBachelors = ifelse(TotalPop > 0, ((FemaleBachelors + MaleBachelors) / TotalPop),0),
-         pctPoverty = ifelse(TotalPop > 0, TotalPoverty / TotalPop, 0),
-         pctCarCommute = ifelse(TotalCommute > 0, CarCommute / TotalCommute,0),
-         pctPubCommute = ifelse(TotalCommute > 0, PubCommute / TotalCommute,0),
+  mutate(pctWhite = (ifelse(TotalPop > 0, Whites / TotalPop,0))*100,
+         pctBlack = (ifelse(TotalPop > 0, Blacks / TotalPop,0))*100,
+         pctHis = (ifelse(TotalPop >0, TotalHispanic/TotalPop,0))*100,
+         pctBlackorHis = (ifelse (TotalPop>0, (Blacks+TotalHispanic)/TotalPop,0)) *100,
+         pctBachelors = (ifelse(TotalPop > 0, ((FemaleBachelors + MaleBachelors) / TotalPop),0)) *100,
+         pctPoverty = (ifelse(TotalPop > 0, TotalPoverty / TotalPop, 0))*100,
+         pctCarCommute = (ifelse(TotalCommute > 0, CarCommute / TotalCommute,0))*100,
+         pctPubCommute = (ifelse(TotalCommute > 0, PubCommute / TotalCommute,0))*100,
          year = "2017") %>%
   dplyr::select(-Whites, -Blacks, -FemaleBachelors, -MaleBachelors, -TotalPoverty, -CarCommute, -PubCommute, -TotalCommute,-TotalHispanic)
 
@@ -440,7 +440,65 @@ GraduatedSymbolMap <-
   facet_wrap(~year) +
   mapTheme()
 GraduatedSymbolMap
+
+# MULTIPLE RING BUFFER -----------------
+# Multiple ring Buffer -----------------
+
+#####
+
+multipleRingBuffer <- function(inputPolygon, maxDistance, interval)
+{distances <- seq(0, maxDistance, interval)
+distancesCounter <- 2
+numberOfRings <- floor(maxDistance / interval)
+numberOfRingsCounter <- 1
+allRings <- data.frame()
+
+while (numberOfRingsCounter <= numberOfRings)
+{if(distances[distancesCounter] < 0 & distancesCounter == 2)
+{ buffer1 <- st_buffer(inputPolygon, distances[distancesCounter])
+buffer1_ <- st_difference(inputPolygon, buffer1)
+thisRing <- st_cast(buffer1_, "POLYGON")
+thisRing <- as.data.frame(thisRing[,ncol(thisRing)])
+thisRing$distance <- distances[distancesCounter]
+}
+  else if(distances[distancesCounter] < 0 & distancesCounter > 2)
+  { buffer1 <- st_buffer(inputPolygon, distances[distancesCounter])
+  buffer2 <- st_buffer(inputPolygon, distances[distancesCounter-1])
+  thisRing <- st_difference(buffer2,buffer1)
+  thisRing <- st_cast(thisRing, "POLYGON")
+  thisRing <- as.data.frame(thisRing$geometry)
+  thisRing$distance <- distances[distancesCounter]
+  }
   
+  else
+  { buffer1 <- st_buffer(inputPolygon, distances[distancesCounter])
+  buffer1_ <- st_buffer(inputPolygon, distances[distancesCounter-1])
+  thisRing <- st_difference(buffer1,buffer1_)
+  thisRing <- st_cast(thisRing, "POLYGON")
+  thisRing <- as.data.frame(thisRing[,ncol(thisRing)])
+  thisRing$distance <- distances[distancesCounter]
+  } 
+  allRings <- rbind(allRings, thisRing)
+  distancesCounter <- distancesCounter + 1
+  numberOfRingsCounter <- numberOfRingsCounter + 1
+}
+
+allRings <- st_as_sf(allRings)
+
+}
+
+allTracts.rings <-
+  st_join(st_centroid(dplyr::select(allTracts, GEOID, year)),
+          multipleRingBuffer(st_union(wmataStops), 52800, 2640)) %>%
+  st_drop_geometry() %>%
+  left_join(dplyr::select(allTracts, GEOID, MedRent, year),
+            by=c("GEOID"="GEOID", "year"="year")) %>%
+  st_sf() %>%
+  mutate(distance = distance / 5280) #convert to miles
+
+ggplot(wmataStops) +
+  geom_sf(data = allTracts.rings, aes(fill = distance)) +
+  geom_sf(data = wmataStops, aes(color = "black"))
 
 # CRIME DATA ---------------------------
 
