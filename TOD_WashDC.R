@@ -123,11 +123,7 @@ tracts2009 <-
          pctPoverty = (ifelse(TotalPop > 0, TotalPoverty / TotalPop, 0))*100,
          pctCarCommute = (ifelse(TotalCommute > 0, CarCommute / TotalCommute,0))*100,
          pctPubCommute = (ifelse(TotalCommute > 0, PubCommute / TotalCommute,0))*100,
-<<<<<<< HEAD
          year = "2009") %>%
-=======
-         year = "2019") %>%
->>>>>>> 232fa194a5edbec202204eba091b433a211918f2
   dplyr::select(-Whites, -Blacks, -FemaleBachelors, -MaleBachelors, -TotalPoverty, -CarCommute, -PubCommute, -TotalCommute, -TotalHispanic)
 
 # ---- Washington, DC - Census Data - 2017 ----
@@ -344,8 +340,7 @@ mapsPctWhite <-
   facet_wrap(~year)+
   mapTheme() + 
   theme(plot.title = element_text(size=22))
-<<<<<<< HEAD
-MedRentWmataLines
+mapsPctWhite
 
 # TASK 2, PART B: MAPPING [PERCENT WHITE]
 PctWhiteWmataLines <-
@@ -363,25 +358,15 @@ PctWhiteWmataLines <-
   theme(plot.title = element_text(size=22))
 PctWhiteWmataLines
 # TASK 2, PART C: MAPPING [VARIABLE]
-=======
-mapsPctWhite
+
 
 # TASK 2, PART C: MAPPING [VARIABLE TBD]
->>>>>>> 232fa194a5edbec202204eba091b433a211918f2
 
-# TASK 2, PART D: MAPPING [PUB COMMUTE] -- #we should convert or mutuate pctpubcommute by multiplying by 100
+
+# TASK 2, PART D: MAPPING [PUB COMMUTE]
 mapPubCommute <-
   ggplot(allTracts.group)+
   geom_sf(data = st_union(tracts2009))+
-<<<<<<< HEAD
-  geom_sf(aes(fill = q5(pctPubCommute)), color = NA) +
-  geom_sf(data = buffer, fill = "transparent",color = "indianred4", size = 1.25)+
-  geom_sf(data = wmataLines, color = "black", size = .75)+
-  scale_fill_manual(values = palette5,
-                    labels = qBr(allTracts.group, "pctPubCommute"),
-                    name = "% Public Transportation Commuters \n(Quintile Breaks)") +
-  labs(title = "Percent of Commuters using Public Transportation, 2009-2017", subtitle = "Red border denotes areas close to WMATA stations") +
-=======
   geom_sf(aes(fill = q5(pctPubCommute)), color = NA, alpha= 0.75) +
   geom_sf(data = buffer, fill = "transparent",color = "red", size = 1.25)+
   geom_sf(data = wmataLines, color = "black", size = 1)+
@@ -389,7 +374,6 @@ mapPubCommute <-
                     labels = qBr(allTracts.group, "pctPubCommute"),
                     name = "Percent Public Transport") +
   labs(title = "Percent of Commuters using Public Transportation, 2009 & 2017", subtitle = "Red border denotes areas close to WMATA stations") +
->>>>>>> 232fa194a5edbec202204eba091b433a211918f2
   facet_wrap(~year)+
   mapTheme() + 
   theme(plot.title = element_text(size=22))
@@ -478,37 +462,6 @@ GraduatedSymbolMap <-
 GraduatedSymbolMap
 
 # MULTIPLE RING BUFFER -----------------
-# Multiple ring Buffer -----------------
-
-#####
-
-multipleRingBuffer <- function(inputPolygon, maxDistance, interval)
-{distances <- seq(0, maxDistance, interval)
-distancesCounter <- 2
-numberOfRings <- floor(maxDistance / interval)
-numberOfRingsCounter <- 1
-allRings <- data.frame()
-
-while (numberOfRingsCounter <= numberOfRings)
-{if(distances[distancesCounter] < 0 & distancesCounter == 2)
-{ buffer1 <- st_buffer(inputPolygon, distances[distancesCounter])
-buffer1_ <- st_difference(inputPolygon, buffer1)
-thisRing <- st_cast(buffer1_, "POLYGON")
-thisRing <- as.data.frame(thisRing[,ncol(thisRing)])
-thisRing$distance <- distances[distancesCounter]
-}
-  else if(distances[distancesCounter] < 0 & distancesCounter > 2)
-  { buffer1 <- st_buffer(inputPolygon, distances[distancesCounter])
-  buffer2 <- st_buffer(inputPolygon, distances[distancesCounter-1])
-  thisRing <- st_difference(buffer2,buffer1)
-  thisRing <- st_cast(thisRing, "POLYGON")
-  thisRing <- as.data.frame(thisRing$geometry)
-  thisRing$distance <- distances[distancesCounter]
-  }
-  
-<<<<<<< HEAD
-# Multiple ring Buffer -----------------
-#####
 multipleRingBuffer <- function(inputPolygon, maxDistance, interval) 
 {distances <- seq(0, maxDistance, interval)
   distancesCounter <- 2
@@ -552,49 +505,17 @@ multipleRingBuffer <- function(inputPolygon, maxDistance, interval)
 
 
 allTracts.rings <-
-  st_join(st_centroid(dplyr::select(allTracts, GEOID, year)), 
-          multipleRingBuffer(st_union(wmataStops), 52800, 2640)) %>%
-  st_drop_geometry() %>%
-  left_join(dplyr::select(allTracts, GEOID, MedRent, year), 
-=======
-  else
-  { buffer1 <- st_buffer(inputPolygon, distances[distancesCounter])
-  buffer1_ <- st_buffer(inputPolygon, distances[distancesCounter-1])
-  thisRing <- st_difference(buffer1,buffer1_)
-  thisRing <- st_cast(thisRing, "POLYGON")
-  thisRing <- as.data.frame(thisRing[,ncol(thisRing)])
-  thisRing$distance <- distances[distancesCounter]
-  } 
-  allRings <- rbind(allRings, thisRing)
-  distancesCounter <- distancesCounter + 1
-  numberOfRingsCounter <- numberOfRingsCounter + 1
-}
-
-allRings <- st_as_sf(allRings)
-
-}
-
-allTracts.rings <-
   st_join(st_centroid(dplyr::select(allTracts, GEOID, year)),
           multipleRingBuffer(st_union(wmataStops), 52800, 2640)) %>%
   st_drop_geometry() %>%
   left_join(dplyr::select(allTracts, GEOID, MedRent, year),
->>>>>>> 232fa194a5edbec202204eba091b433a211918f2
             by=c("GEOID"="GEOID", "year"="year")) %>%
   st_sf() %>%
   mutate(distance = distance / 5280) #convert to miles
 
-<<<<<<< HEAD
-ggplot(DC_tract_centroids) + 
+ggplot() + 
   geom_sf(data = allTracts.rings, aes(fill = distance)) +
   geom_sf(data = wmataStops, aes(color = "black"))
-
-
-=======
-ggplot(wmataStops) +
-  geom_sf(data = allTracts.rings, aes(fill = distance)) +
-  geom_sf(data = wmataStops, aes(color = "black"))
->>>>>>> 232fa194a5edbec202204eba091b433a211918f2
 
 # CRIME DATA ---------------------------
 
