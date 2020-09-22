@@ -8,7 +8,6 @@ library(RColorBrewer)
 library(viridis)
 
 
-
 options(scipen=999)
 options(tigris_class = "sf")
 
@@ -68,13 +67,11 @@ q5 <- function(variable) {as.factor(ntile(variable, 5))}
 
 # Load hexadecimal color palette
 # Discrete from YlGnBu colorbrewer palette
-# We can use colorbrewer package and YlGnBu for continuous scaling in graduated symbol map later
 # This way also the lightest is yellow, won't get confused with NA
-palette5 <- c("#ffffcc","#a1dab4","#41b6c4","#2c7fb8","#253494")
+palette5.YlGnBu <- c("#ffffcc","#a1dab4","#41b6c4","#2c7fb8","#253494")
 
 # Here's a palette of two colors for TOD and Non-TOD, similar to what we used in lab.
 paletteTOD <- c("#fdb863", "#80cdc1")
-
 
 # TASK 1: DATA WRANGLING -------------------------------------------------------
 
@@ -311,57 +308,56 @@ TimeSpaceGrps
 # Four small-multiple (2009 & 2017) visualizations comparing four selected Census variables across time
 
 # TASK 2, PART A: MAPPING MEDIAN RENT
-## NEED TO DO: change NA color/texture only
+## NEED TO DO: add the wmata line to the legend
 
-MedRent <-
+mapsMedRent <-
   ggplot(allTracts.group)+
   geom_sf(data = st_union(tracts2009))+
-  geom_sf(aes(fill = q5(MedRent.inf)), color = NA) +
-  geom_sf(data = buffer, fill = "transparent",color = "orange", size = 1.5)+
-  scale_fill_manual(values = palette5,
-                    labels = qBr(allTracts.group, "MedRent.inf"),
-                    name = "Median Rent ($)\n(Quintile Breaks)") + 
-  labs(title = "Median Rent 2009-2017", subtitle = "Real Dollars; Red border denotes areas close to WMATA stations") +
-  facet_wrap(~year)+
-  mapTheme() + 
-  theme(plot.title = element_text(size=22))
-MedRent
-
-# USE THIS ONE for 2a, IT HAS WMATA LINES - LOOKS CLEANER
-MedRentWmataLines <-
-  ggplot(allTracts.group)+
-  geom_sf(data = st_union(tracts2009))+
-  geom_sf(aes(fill = q5(MedRent.inf)), color = NA) +
-  geom_sf(data = buffer, fill = "transparent",color = "red", size = 1.5)+
+  geom_sf(aes(fill = q5(MedRent.inf)), color = NA, alpha = 0.75) +
+  geom_sf(data = buffer, fill = "transparent", color = "red", size = 1.25)+
   geom_sf(data = wmataLines, color = "black", size = 1)+
-  scale_fill_manual(values = palette5,
+  scale_fill_manual(values = palette5.YlGnBu,
                     labels = qBr(allTracts.group, "MedRent.inf"),
                     name = "Median Rent ($)\n(Quintile Breaks)") +
-  labs(title = "Median Rent 2009-2017", subtitle = "Real Dollars; Red border denotes areas close to WMATA stations") +
+  labs(title = "Median Rent by Census Tract, 2009-2017", subtitle = "Real Dollars; Red border denotes areas close to WMATA stations") +
   facet_wrap(~year)+
   mapTheme() + 
   theme(plot.title = element_text(size=22))
-MedRentWmataLines
+mapsMedRent
 
-# TASK 2, PART B: MAPPING [PERCENT WHITE]
-
-# TASK 2, PART C: MAPPING [VARIABLE]
-
-# TASK 2, PART D: MAPPING [PUB COMMUTE] -- what is going on with the legend?! qbr again
-pctPubCommuteWmataLines <-
+# TASK 2, PART B: MAPPING [PERCENT WHITE] #we should convert pctWhite by multiplying by 100
+mapsPctWhite <-
   ggplot(allTracts.group)+
   geom_sf(data = st_union(tracts2009))+
-  geom_sf(aes(fill = q5(pctPubCommute)), color = NA) +
-  geom_sf(data = buffer, fill = "transparent",color = "red", size = 1.5)+
+  geom_sf(aes(fill=q5(pctWhite)), color = NA, alpha = 0.75) +
+  geom_sf(data = buffer, fill = "transparent",color = "red", size = 1.25)+
   geom_sf(data = wmataLines, color = "black", size = 1)+
-  scale_fill_manual(values = palette5,
-                    labels = qBr(allTracts.group, "pctPubCommute"),
-                    name = "Pct Public Transportation Commuters \n(Quintile Breaks)") +
-  labs(title = "Percent of Commuters using Public Transportation, 2009-2017", subtitle = "Red border denotes areas close to WMATA stations") +
+  scale_fill_manual(values = palette5.YlGnBu,
+                    labels = qBr(allTracts.group, "pctWhite"),
+                     name = "Percent White") +
+  labs(title = "Percent of Population that Identifies as White, 2009 & 2017", subtitle = "Red border denotes areas close to WMATA stations") +
   facet_wrap(~year)+
   mapTheme() + 
   theme(plot.title = element_text(size=22))
-pctPubCommuteWmataLines
+mapsPctWhite
+
+# TASK 2, PART C: MAPPING [VARIABLE TBD]
+
+# TASK 2, PART D: MAPPING [PUB COMMUTE] -- #we should convert or mutuate pctpubcommute by multiplying by 100
+mapPubCommute <-
+  ggplot(allTracts.group)+
+  geom_sf(data = st_union(tracts2009))+
+  geom_sf(aes(fill = q5(pctPubCommute)), color = NA, alpha= 0.75) +
+  geom_sf(data = buffer, fill = "transparent",color = "red", size = 1.25)+
+  geom_sf(data = wmataLines, color = "black", size = 1)+
+  scale_fill_manual(values = palette5.YlGnBu,
+                    labels = qBr(allTracts.group, "pctPubCommute"),
+                    name = "Percent Public Transport") +
+  labs(title = "Percent of Commuters using Public Transportation, 2009 & 2017", subtitle = "Red border denotes areas close to WMATA stations") +
+  facet_wrap(~year)+
+  mapTheme() + 
+  theme(plot.title = element_text(size=22))
+mapPubCommute
 
 # TASKS 3 & 4: One grouped bar plot making these same comparisons
 ## NEED TO DO - swap out variables in TOD indicator group bar plots and tables once we determine final variables we are using
@@ -427,16 +423,16 @@ allTracts.group.TODonly.centroids
  
 GraduatedSymbolMap <-
   ggplot ()+
-  geom_sf(data=allTracts.group, color="white", fill="gray")+
+  geom_sf(data=allTracts.group, color="white", fill="gray", alpha=0.4)+
   geom_point(data=allTracts.group.TODonly.centroids, aes(x=lat, y=lon, size=TotalPop, color=q5(MedRent.inf)))+
   scale_size_area()+
-  scale_color_manual(values=palette5,
+  scale_color_manual(values=palette5.YlGnBu,
                      labels = qBr(allTracts.group, "MedRent.inf"),
                      name = "Median Rent ($) \n(Quintile Breaks)") +
 
   geom_sf(data=wmataLines, size=1, color="black") + 
   aes() +
-  geom_sf(data=wmataStops, size=1.75, shape=21, color="black", fill="yellow") + 
+  geom_sf(data=wmataStops, size=1.25, shape=22, color="black", fill="#999999", alpha = 0.75) + 
   aes() +
   labs(title="Population and Median Rent in Census Tracts within 1/2 mi. of WMATA Stops", 
        subtitle="Washington, DC", 
@@ -467,7 +463,7 @@ DC_2017_Crime <-
   rbind(
     st_read("https://opendata.arcgis.com/datasets/6af5cb8dc38e4bcbac8168b27ee104aa_38.geojson") %>% 
       select(OBJECTID, OFFENSE)) %>%
-    st_transform(st_crs(tracts2017))
+    st_transform(st_crs(tracts2009))
 
 # getting lat lon 2017
 DC_2017_Crime <- DC_2017_Crime %>%
@@ -476,27 +472,33 @@ DC_2017_Crime <- DC_2017_Crime %>%
 
 # Mapping DC crime data 2009
 ggplot(subset(DC_2009_Crime, OFFENSE =="ROBBERY")) + 
-  geom_sf(data = tracts2009,
-          aes(fill = q5(MedRent)), color = NA) +
-  scale_fill_manual(values = palette5)+
+  geom_sf(data = allTracts.group %>%
+          filter(year=="2017"),
+          aes(fill = q5(MedRent.inf)), color = NA, alpha=0.75) +
+  scale_fill_manual(values = palette5.YlGnBu,
+                    labels = qBr(allTracts.group, "MedRent.inf"),
+                    name = "Median Rent ($) \n(Quintile Breaks)")+
   geom_point(aes(x=lat, y=lon), size=0.025) +
-  geom_sf(data=wmataStops, size=1.75, shape=22,color="black", fill="yellow")+
+  geom_sf(data=wmataStops, size=1.75, shape=22,color="black", fill="#999999")+
   geom_sf(data=buffer, fill="transparent", color="red", size=1.5)+
   labs(title="DC Crime: Robbery Incidents in 2009", 
        subtitle="Washington, DC", 
-       caption="Source: opendata.dc.gov") +
+       caption="Data: US Census Bureau; opendata.dc.gov") +
   mapTheme()
 
 # Mapping DC crime data 2017
 ggplot(subset(DC_2017_Crime, OFFENSE =="ROBBERY")) + 
-  geom_sf(data = tracts2017,
-          aes(fill = q5(MedRent)), color = NA) +
-  scale_fill_manual(values = palette5)+
-  geom_point(aes(x=lat, y=lon), size=0.01)+
-  geom_sf(data=wmataStops, size=1.75, shape=22,color="black", fill="yellow")+
+  geom_sf(data = allTracts.group %>%
+          filter(year=="2017"),
+          aes(fill = q5(MedRent.inf)), color = NA, alpha=0.75) +
+  scale_fill_manual(values = palette5.YlGnBu,
+                    labels = qBr(allTracts.group, "MedRent.inf"),
+                    name = "Median Rent ($) \n(Quintile Breaks)")+
+  geom_point(aes(x=lat, y=lon), size=0.025)+
+  geom_sf(data=wmataStops, size=1.75, shape=22,color="black", fill="#999999")+
   geom_sf(data=buffer, fill="transparent", color="red", size=1.5)+
   labs(title="DC Crime: Robbery Incidents in 2017", 
        subtitle="Washington, DC", 
-       caption="Source: opendata.dc.gov") +
+       caption="Data: US Census Bureau; opendata.dc.gov") +
   mapTheme()
 
