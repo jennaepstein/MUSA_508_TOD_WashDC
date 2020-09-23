@@ -319,7 +319,8 @@ mapsMedRent <-
   geom_sf(data = wmataLines, color = "black", size = 1)+
   scale_fill_manual(values = palette5.YlGnBu,
                     labels = qBr(allTracts.group, "MedRent.inf"),
-                    name = "Median Rent ($)\n(Quintile Breaks)") +
+                    name = "Median Rent ($)\n(Quintile Breaks)",
+                    na.value="#f5e9dc") +
   labs(title = "Median Rent by Census Tract, 2009-2017", subtitle = "Real Dollars; Red border denotes areas close to WMATA stations") +
   facet_wrap(~year)+
   mapTheme() + 
@@ -331,7 +332,7 @@ mapsPctWhite <-
   ggplot(allTracts.group)+
   geom_sf(data = st_union(tracts2009))+
   geom_sf(aes(fill=q5(pctWhite)), color = NA, alpha = 0.75) +
-  geom_sf(data = buffer, fill = "transparent",color = "red", size = 1.25)+
+  geom_sf(data = buffer, fill = "transparent",color = "red", size = 1.25, linetype = "dashed") +
   geom_sf(data = wmataLines, color = "black", size = 1)+
   scale_fill_manual(values = palette5.YlGnBu,
                     labels = qBr(allTracts.group, "pctWhite"),
@@ -342,21 +343,6 @@ mapsPctWhite <-
   theme(plot.title = element_text(size=22))
 mapsPctWhite
 
-# TASK 2, PART B: MAPPING [PERCENT WHITE]
-PctWhiteWmataLines <-
-  ggplot(allTracts.group)+
-  geom_sf(data = st_union(tracts2009))+
-  geom_sf(aes(fill = q5(pctWhite)), color = NA) +
-  geom_sf(data = buffer, fill = "transparent",color = "indianred4", size = 1.5)+
-  geom_sf(data = wmataLines, color = "black", size = 1)+
-  scale_fill_manual(values = palette5,
-                    labels = qBr(allTracts.group, "pctWhite"),
-                    name = "Median Rent ($)\n(Quintile Breaks)") +
-  labs(title = "% of White population 2009-2017", subtitle = "Red border denotes areas close to WMATA stations") +
-  facet_wrap(~year)+
-  mapTheme() + 
-  theme(plot.title = element_text(size=22))
-PctWhiteWmataLines
 # TASK 2, PART C: MAPPING [VARIABLE]
 
 
@@ -436,6 +422,15 @@ allTracts.group.TODonly.centroids <- sf::st_centroid(allTracts.group.TODonly) %>
   
 allTracts.group.TODonly.centroids
 
+wmataStopscoord <- wmataStops %>% 
+                  st_transform(st_crs(4326)) %>% 
+                  dplyr::mutate(lat = sf::st_coordinates(.)[,1], 
+                                lon = sf::st_coordinates(.)[,2])
+
+df.graduated.map <- merge(allTracts.group.TODonly, wmataStops, by = "geometry")
+              merge
+
+
 # TASK 5, PART A: Graduated symbol map of population within 1/2 mi of each wmata station
 ## Legend work needed - should we adjust breaks in population scale? Need to add metro line. and do we want to include stations?
 # Note that when run, it removes 5 rows containing missing values (geom_point). Not sure if this happens for the tracts that aren't the same year to year, or if has to do wiht the NAs for medrent.inf. Maybe we should discuss removing these tracts, for the purposes of our calculations.
@@ -447,7 +442,7 @@ GraduatedSymbolMap <-
   geom_point(data=allTracts.group.TODonly.centroids, aes(x=lat, y=lon, size=TotalPop, color=q5(MedRent.inf)))+
   scale_size_area()+
   scale_color_manual(values=palette5.YlGnBu,
-                     labels = qBr(allTracts.group, "MedRent.inf"),
+                     labels = qBr(wmataStops, "MedRent.inf"),
                      name = "Median Rent ($) \n(Quintile Breaks)") +
 
   geom_sf(data=wmataLines, size=1, color="black") + 
@@ -460,6 +455,26 @@ GraduatedSymbolMap <-
   facet_wrap(~year) +
   mapTheme()
 GraduatedSymbolMap
+
+
+
+MedRentTest <- ggplot()+
+  geom_sf(data = allTracts, fill = '#f0f0f0', 
+          color = 'white')
+  geom_point(data= wmataStopscoord, 
+             aes(x=lon, y=lat, size = MedRent), 
+             alpha = 0.6) + 
+  scale_size_area(name="", max_size = 9) + 
+  guides(size=guide_legend("Median Rent")) +
+  labs(
+    title = "Median Rent",
+    caption = "Data: OpenDataDC"
+  )+
+  mapTheme()
+MedRentTest
+
+
+
 
 # MULTIPLE RING BUFFER -----------------
 multipleRingBuffer <- function(inputPolygon, maxDistance, interval) 
@@ -505,17 +520,22 @@ multipleRingBuffer <- function(inputPolygon, maxDistance, interval)
 
 
 allTracts.rings <-
-  st_join(st_centroid(dplyr::select(allTracts, GEOID, year)),
-          multipleRingBuffer(st_union(wmataStops), 52800, 2640)) %>%
+  st_join(st_centroid(dplyr::select(allTracts.group, GEOID, year)),
+          multipleRingBuffer(st_union(wmataStops), 47520, 2640)) %>%
   st_drop_geometry() %>%
-  left_join(dplyr::select(allTracts, GEOID, MedRent, year),
+  left_join(dplyr::select(allTracts.group, GEOID, MedRent.inf, year),
             by=c("GEOID"="GEOID", "year"="year")) %>%
   st_sf() %>%
-  mutate(distance = distance / 5280) #convert to miles
+  mutate(distance = distance / 5280)
 
-ggplot() + 
-  geom_sf(data = allTracts.rings, aes(fill = distance)) +
-  geom_sf(data = wmataStops, aes(color = "black"))
+allTracts.rings.group <- allTracts.rings %>%
+  group_by(distance,year, .add=TRUE) %>%
+  summarise(AvgRent = mean(MedRent.inf, na.rm = TRUE))
+
+ggplot(data=allTracts.rings.group,
+       aes(x = distance, y = AvgRent, colour = year)) +
+  geom_line(size=2) +
+  geom_point(size=3)
 
 # CRIME DATA ---------------------------
 
