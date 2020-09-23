@@ -77,7 +77,7 @@ paletteTOD <- c("#fdb863", "#80cdc1")
 
 # Creating a vector of census variables, since we have several.
 
-acs_vars_DC <- c("B02001_001E", # Estimate!!Total population by race
+acs_vars_DC <- c("B02001_001E", # Estimate!!Total population by race -- ##let's double check that it's okay to use this as long as we justify it
                 "B02001_002E", # People describing themselves as "white alone"
                 "B02001_003E", # People describing themselves as "black" or "african-american" alone
                 "B15001_050E", # Females with bachelors degrees
@@ -160,7 +160,7 @@ tracts2017 <-
          pctPubCommute = (ifelse(TotalCommute > 0, PubCommute / TotalCommute,0))*100,
          year = "2017") %>%
   dplyr::select(-Whites, -Blacks, -FemaleBachelors, -MaleBachelors, -TotalPoverty, -CarCommute, -PubCommute, -TotalCommute, -TotalHispanic)
-
+  
 
 # ---- Combining 2009 and 2017 data ----
 
@@ -184,14 +184,15 @@ wmataStops <- wmataStops %>%
   mutate(LINE = replace(LINE,LINE == "grn", "green"))
 wmataStops
 
-# ---- Visualize wmata stops ----
 
+# ---- Visualize wmata stops ----
+## removing color for now - we just want ot see where the stops are, not different lines at this point
 ggplot() + 
   geom_sf(data=st_union(tracts2009)) +
   geom_sf(data=wmataStops, 
-          aes(colour = LINE),
-          show.legend = "point", size= 2, alpha = 0.5) +
-  scale_colour_manual(values = c("red" = "red", "orange" = "orange", "yellow" = "yellow", "green" = "green", "blue" = "blue", "silver" = "gray")) +
+          aes(),
+          show.legend = "point", size= 2) +
+  ## scale_colour_manual(values = c("red" = "red", "orange" = "orange", "yellow" = "yellow", "green" = "green", "blue" = "blue", "silver" = "gray")) +
   labs(title="WMATA Stops", 
        subtitle="Washington, DC", 
        caption="Source: opendata.dc.gov") +
@@ -219,6 +220,7 @@ wmataBuffers <-
     st_union(st_buffer(wmataStops, 2640)) %>%
       st_sf() %>%
       mutate(Legend = "Unioned Buffer"))
+
 
 # ---- Small multiple facet_wrap plot showing both buffers ----
 
@@ -411,69 +413,91 @@ allTracts.Summary %>%
 
 # TASK 5: Graduated symbol maps ------------------------------------------------
 
-# More wrangling to get centroids for all tracts, both years, filtering by TOD
-
-allTracts.group.TODonly <-
-  filter(allTracts.group, TOD =="TOD")
-
-allTracts.group.TODonly.centroids <- sf::st_centroid(allTracts.group.TODonly) %>%
-  dplyr::mutate(lat = sf::st_coordinates(.)[,1],
-                lon = sf::st_coordinates(.)[,2])
-  
-allTracts.group.TODonly.centroids
-
 wmataStopscoord <- wmataStops %>% 
-                  st_transform(st_crs(4326)) %>% 
+                  st_transform(st_crs('ESRI:102685')) %>% 
                   dplyr::mutate(lat = sf::st_coordinates(.)[,1], 
                                 lon = sf::st_coordinates(.)[,2])
 
-df.graduated.map <- merge(allTracts.group.TODonly, wmataStops, by = "geometry")
-              merge
-
-
 # TASK 5, PART A: Graduated symbol map of population within 1/2 mi of each wmata station
 ## Legend work needed - should we adjust breaks in population scale? Need to add metro line. and do we want to include stations?
-# Note that when run, it removes 5 rows containing missing values (geom_point). Not sure if this happens for the tracts that aren't the same year to year, or if has to do wiht the NAs for medrent.inf. Maybe we should discuss removing these tracts, for the purposes of our calculations.
-# also, if we need to do two separate maps (without a facet wrap), one for each year of tracts, we could try that...
- 
-GraduatedSymbolMap <-
-  ggplot ()+
-  geom_sf(data=allTracts.group, color="white", fill="gray", alpha=0.4)+
-  geom_point(data=allTracts.group.TODonly.centroids, aes(x=lat, y=lon, size=TotalPop, color=q5(MedRent.inf)))+
-  scale_size_area()+
-  scale_color_manual(values=palette5.YlGnBu,
-                     labels = qBr(wmataStops, "MedRent.inf"),
-                     name = "Median Rent ($) \n(Quintile Breaks)") +
 
+wmataBuffersStops <- 
+  st_transform(wmataStopscoord, ('ESRI:102685'))%>%
+    st_buffer(2640) %>% # projection is in feet
+      dplyr::select(NAME, lat, lon)
+
+
+joinBuffersStopsTracts <-
+  st_join(allTracts.group, wmataBuffersStops)%>%
+  st_drop_geometry() %>%
+  filter(!is.na(NAME)) 
+
+
+# grouping by wmata stop - population
+totalPopbyStop <- joinBuffersStopsTracts %>%
+  group_by(NAME, year, .add=TRUE) %>%
+  distinct(NAME, .keep_all=TRUE) %>%
+  summarize(sumPop = sum(TotalPop), lat, lon)
+  
+  
+# map
+map.TotalPopbyStop <-
+  ggplot()+
+  geom_sf(data=allTracts.group, color="white", fill="gray", alpha=0.4)+
+  geom_point(data=totalPopbyStop, aes(x=lat, y=lon, size=sumPop, color='red'))+
+  scale_size_area()+
   geom_sf(data=wmataLines, size=1, color="black") + 
   aes() +
-  geom_sf(data=wmataStops, size=1.25, shape=22, color="black", fill="#999999", alpha = 0.75) + 
-  aes() +
-  labs(title="Population and Median Rent in Census Tracts within 1/2 mi. of WMATA Stops", 
+  labs(title="Population per Census Tract within 1/2 mi. of WMATA Stops, by Stop", 
        subtitle="Washington, DC", 
        caption="Data: US Census Bureau; opendata.dc.gov") +
   facet_wrap(~year) +
   mapTheme()
-GraduatedSymbolMap
+map.TotalPopbyStop
+  
+  
+# grouping by wmata stop - medrent
+avgMedRentbyStop <- joinBuffersStopsTracts %>%
+    group_by(NAME, year, .add=TRUE) %>%
+    summarize(AvgRent = mean(MedRent.inf, na.rm = TRUE), lat, lon)
 
-
-
-MedRentTest <- ggplot()+
-  geom_sf(data = allTracts, fill = '#f0f0f0', 
-          color = 'white')
-  geom_point(data= wmataStopscoord, 
-             aes(x=lon, y=lat, size = MedRent), 
-             alpha = 0.6) + 
-  scale_size_area(name="", max_size = 9) + 
-  guides(size=guide_legend("Median Rent")) +
-  labs(
-    title = "Median Rent",
-    caption = "Data: OpenDataDC"
-  )+
+# map
+map.avgMedRentbyStop <-
+  ggplot()+
+  geom_sf(data=allTracts.group, color="white", fill="gray", alpha=0.4)+
+  geom_point(data=avgMedRentbyStop, aes(x=lat, y=lon, color=AvgRent, size=5))+
+  scale_size_area()+
+  scale_color_viridis(option="D", direction= -1) +
+  geom_sf(data=wmataLines, size=1, color="black") + 
+  aes() +
+  labs(title="Avg. Median Rent per Census Tract within 1/2 mi. of WMATA Stops, by Stop", 
+       subtitle="Washington, DC", 
+       caption="Data: US Census Bureau; opendata.dc.gov") +
+  facet_wrap(~year) +
   mapTheme()
-MedRentTest
+map.avgMedRentbyStop
 
+# grouping by wmata stop - population AND medrent
+joinPopRentbyStop <- joinBuffersStopsTracts %>%
+  group_by(NAME, year, .add=TRUE) %>%
+  summarize(sumPop = sum(TotalPop), AvgRent = mean(MedRent.inf, na.rm = TRUE), lat, lon)
 
+# map
+## legend work needed - avg rent bar, put lowest on top, but keep it  yellow
+map.gradsymbolcombo <-
+  ggplot()+
+  geom_sf(data=allTracts.group, color="white", fill="gray", alpha=0.4)+
+  geom_point(data=joinPopRentbyStop, aes(x=lat, y=lon, size=sumPop, color=AvgRent))+
+  scale_size_area()+
+  scale_color_viridis(option="D", direction= -1) +
+  geom_sf(data=wmataLines, size=1, color="black") + 
+  aes() +
+  labs(title="Avg. Median Rent per Census Tract within 1/2 mi. of WMATA Stops, by Stop", 
+       subtitle="Washington, DC", 
+       caption="Data: US Census Bureau; opendata.dc.gov") +
+  facet_wrap(~year) +
+  mapTheme()
+map.gradsymbolcombo
 
 
 # MULTIPLE RING BUFFER -----------------
@@ -568,7 +592,7 @@ DC_2017_Crime <- DC_2017_Crime %>%
 # Mapping DC crime data 2009
 ggplot(subset(DC_2009_Crime, OFFENSE =="ROBBERY")) + 
   geom_sf(data = allTracts.group %>%
-          filter(year=="2017"),
+          filter(year=="2009"),
           aes(fill = q5(MedRent.inf)), color = NA, alpha=0.75) +
   scale_fill_manual(values = palette5.YlGnBu,
                     labels = qBr(allTracts.group, "MedRent.inf"),
