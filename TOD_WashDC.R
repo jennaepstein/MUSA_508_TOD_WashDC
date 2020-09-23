@@ -4,7 +4,6 @@ library(tidycensus)
 library(sf)
 library(kableExtra)
 library(tigris)
-library(RColorBrewer)
 library(viridis)
 
 
@@ -160,7 +159,6 @@ tracts2017 <-
          pctPubCommute = (ifelse(TotalCommute > 0, PubCommute / TotalCommute,0))*100,
          year = "2017") %>%
   dplyr::select(-Whites, -Blacks, -FemaleBachelors, -MaleBachelors, -TotalPoverty, -CarCommute, -PubCommute, -TotalCommute, -TotalHispanic)
-  
 
 # ---- Combining 2009 and 2017 data ----
 
@@ -183,7 +181,6 @@ wmataStops <- wmataStops %>%
   mutate(LINE = replace(LINE,LINE == "yllw", "yellow"))%>%
   mutate(LINE = replace(LINE,LINE == "grn", "green"))
 wmataStops
-
 
 # ---- Visualize wmata stops ----
 ## removing color for now - we just want ot see where the stops are, not different lines at this point
@@ -345,8 +342,6 @@ mapsPctWhite <-
   theme(plot.title = element_text(size=22))
 mapsPctWhite
 
-# TASK 2, PART C: MAPPING [VARIABLE]
-
 
 # TASK 2, PART C: MAPPING [VARIABLE TBD]
 
@@ -413,42 +408,39 @@ allTracts.Summary %>%
 
 # TASK 5: Graduated symbol maps ------------------------------------------------
 
+# some more data wrangling
 wmataStopscoord <- wmataStops %>% 
                   st_transform(st_crs('ESRI:102685')) %>% 
-                  dplyr::mutate(lat = sf::st_coordinates(.)[,1], 
-                                lon = sf::st_coordinates(.)[,2])
-
-# TASK 5, PART A: Graduated symbol map of population within 1/2 mi of each wmata station
-## Legend work needed - should we adjust breaks in population scale? Need to add metro line. and do we want to include stations?
+                  dplyr::mutate(x = sf::st_coordinates(.)[,1], 
+                                y = sf::st_coordinates(.)[,2])
 
 wmataBuffersStops <- 
   st_transform(wmataStopscoord, ('ESRI:102685'))%>%
     st_buffer(2640) %>% # projection is in feet
-      dplyr::select(NAME, lat, lon)
-
+      dplyr::select(NAME, x, y)
 
 joinBuffersStopsTracts <-
   st_join(allTracts.group, wmataBuffersStops)%>%
   st_drop_geometry() %>%
   filter(!is.na(NAME)) 
 
-
 # grouping by wmata stop - population
 totalPopbyStop <- joinBuffersStopsTracts %>%
   group_by(NAME, year, .add=TRUE) %>%
   distinct(NAME, .keep_all=TRUE) %>%
-  summarize(sumPop = sum(TotalPop), lat, lon)
-  
+  summarize(sumPop = sum(TotalPop), x, y)
   
 # map
+## legend work needed - merge the legend items so sumPop circles are
 map.TotalPopbyStop <-
   ggplot()+
   geom_sf(data=allTracts.group, color="white", fill="gray", alpha=0.4)+
-  geom_point(data=totalPopbyStop, aes(x=lat, y=lon, size=sumPop, color='red'))+
-  scale_size_area()+
-  geom_sf(data=wmataLines, size=1, color="black") + 
+  geom_point(data=totalPopbyStop, aes(x=x, y=y, size=sumPop), color='blue', alpha=0.5)+
+  scale_size_area() +
+  guides(size=guide_legend("Sum of Population")) +
+  geom_sf(data=wmataLines, size=1, color="black", alpha=0.8) + 
   aes() +
-  labs(title="Population per Census Tract within 1/2 mi. of WMATA Stops, by Stop", 
+  labs(title="Sum of Population within 1/2 mi. of WMATA Stops, by Stop", 
        subtitle="Washington, DC", 
        caption="Data: US Census Bureau; opendata.dc.gov") +
   facet_wrap(~year) +
@@ -459,18 +451,19 @@ map.TotalPopbyStop
 # grouping by wmata stop - medrent
 avgMedRentbyStop <- joinBuffersStopsTracts %>%
     group_by(NAME, year, .add=TRUE) %>%
-    summarize(AvgRent = mean(MedRent.inf, na.rm = TRUE), lat, lon)
+    distinct(NAME, .keep_all=TRUE) %>%
+    summarize(AvgRent = mean(MedRent.inf, na.rm = TRUE), x, y)
 
 # map
 map.avgMedRentbyStop <-
   ggplot()+
   geom_sf(data=allTracts.group, color="white", fill="gray", alpha=0.4)+
-  geom_point(data=avgMedRentbyStop, aes(x=lat, y=lon, color=AvgRent, size=5))+
+  geom_point(data=avgMedRentbyStop, aes(x=x, y=y, color=AvgRent, size=5))+
   scale_size_area()+
   scale_color_viridis(option="D", direction= -1) +
   geom_sf(data=wmataLines, size=1, color="black") + 
   aes() +
-  labs(title="Avg. Median Rent per Census Tract within 1/2 mi. of WMATA Stops, by Stop", 
+  labs(title="Avg. Median Rent within 1/2 mi. of WMATA Stops, by Stop", 
        subtitle="Washington, DC", 
        caption="Data: US Census Bureau; opendata.dc.gov") +
   facet_wrap(~year) +
@@ -480,19 +473,20 @@ map.avgMedRentbyStop
 # grouping by wmata stop - population AND medrent
 joinPopRentbyStop <- joinBuffersStopsTracts %>%
   group_by(NAME, year, .add=TRUE) %>%
-  summarize(sumPop = sum(TotalPop), AvgRent = mean(MedRent.inf, na.rm = TRUE), lat, lon)
+  distinct(NAME, .keep_all=TRUE) %>%
+  summarize(sumPop = sum(TotalPop), AvgRent = mean(MedRent.inf, na.rm = TRUE), x, y)
 
 # map
 ## legend work needed - avg rent bar, put lowest on top, but keep it  yellow
 map.gradsymbolcombo <-
   ggplot()+
   geom_sf(data=allTracts.group, color="white", fill="gray", alpha=0.4)+
-  geom_point(data=joinPopRentbyStop, aes(x=lat, y=lon, size=sumPop, color=AvgRent))+
-  scale_size_area()+
-  scale_color_viridis(option="D", direction= -1) +
+  geom_point(data=joinPopRentbyStop, aes(x=x, y=y, size=sumPop, color=AvgRent))+
+    guides(size=guide_legend("Sum of Population"))+
+    scale_color_viridis(option="D", direction= -1) +
   geom_sf(data=wmataLines, size=1, color="black") + 
   aes() +
-  labs(title="Avg. Median Rent per Census Tract within 1/2 mi. of WMATA Stops, by Stop", 
+  labs(title="Population and Avg. Median Rent within 1/2 mi. of WMATA Stops, by Stop", 
        subtitle="Washington, DC", 
        caption="Data: US Census Bureau; opendata.dc.gov") +
   facet_wrap(~year) +
@@ -542,7 +536,6 @@ multipleRingBuffer <- function(inputPolygon, maxDistance, interval)
   allRings <- st_as_sf(allRings)
 }
 
-
 allTracts.rings <-
   st_join(st_centroid(dplyr::select(allTracts.group, GEOID, year)),
           multipleRingBuffer(st_union(wmataStops), 47520, 2640)) %>%
@@ -572,10 +565,10 @@ DC_2009_Crime <-
       select(OBJECTID, OFFENSE)) %>%
   st_transform(st_crs(tracts2009))
 
-# getting lat lon 2009
+# getting coordinates, 2009
 DC_2009_Crime <- DC_2009_Crime %>%
-  dplyr::mutate(lat = sf::st_coordinates(.)[,1],
-                lon = sf::st_coordinates(.)[,2])
+  dplyr::mutate(x = sf::st_coordinates(.)[,1],
+                y = sf::st_coordinates(.)[,2])
   
 # 2017
 DC_2017_Crime <- 
@@ -584,10 +577,10 @@ DC_2017_Crime <-
       select(OBJECTID, OFFENSE)) %>%
     st_transform(st_crs(tracts2009))
 
-# getting lat lon 2017
+# getting coordinates, 2017
 DC_2017_Crime <- DC_2017_Crime %>%
-  dplyr::mutate(lat = sf::st_coordinates(.)[,1],
-                lon = sf::st_coordinates(.)[,2])
+  dplyr::mutate(x = sf::st_coordinates(.)[,1],
+                y = sf::st_coordinates(.)[,2])
 
 # Mapping DC crime data 2009
 ggplot(subset(DC_2009_Crime, OFFENSE =="ROBBERY")) + 
@@ -597,7 +590,7 @@ ggplot(subset(DC_2009_Crime, OFFENSE =="ROBBERY")) +
   scale_fill_manual(values = palette5.YlGnBu,
                     labels = qBr(allTracts.group, "MedRent.inf"),
                     name = "Median Rent ($) \n(Quintile Breaks)")+
-  geom_point(aes(x=lat, y=lon), size=0.025) +
+  geom_point(aes(x=x, y=y), size=0.025) +
   geom_sf(data=wmataStops, size=1.75, shape=22,color="black", fill="#999999")+
   geom_sf(data=buffer, fill="transparent", color="red", size=1.5)+
   labs(title="DC Crime: Robbery Incidents in 2009", 
@@ -613,11 +606,10 @@ ggplot(subset(DC_2017_Crime, OFFENSE =="ROBBERY")) +
   scale_fill_manual(values = palette5.YlGnBu,
                     labels = qBr(allTracts.group, "MedRent.inf"),
                     name = "Median Rent ($) \n(Quintile Breaks)")+
-  geom_point(aes(x=lat, y=lon), size=0.025)+
+  geom_point(aes(x=x, y=y), size=0.025)+
   geom_sf(data=wmataStops, size=1.75, shape=22,color="black", fill="#999999")+
   geom_sf(data=buffer, fill="transparent", color="red", size=1.5)+
   labs(title="DC Crime: Robbery Incidents in 2017", 
        subtitle="Washington, DC", 
        caption="Data: US Census Bureau; opendata.dc.gov") +
   mapTheme()
-
