@@ -1,0 +1,466 @@
+---
+title: "TOD in Washington, DC"
+author: "Jenna Epstein, David Seunglee Park, Leah Shapiro"
+date: "9/25/2020"
+output: 
+  html_document:
+    toc: true
+    toc_float: true
+---
+# Set Up
+```{r setup, include=TRUE, message=FALSE, warning=FALSE}
+knitr::opts_chunk$set(
+	echo = TRUE)
+options(scipen=999)
+options(tigris_class = "sf")
+
+library(tidyverse)
+library(tidycensus)
+library(sf)
+library(knitr)
+library(kableExtra)
+library(rmarkdown)
+library(tigris)
+library(viridis)
+
+```
+
+## Census API Key
+```{r, include=TRUE, message=FALSE, warning=FALSE}
+# Make sure to replace this with your own API key! This one is Jenna's.
+census_api_key("41e1c0d912341017fa6f36a5da061d3b23de335e", overwrite = TRUE)
+```
+
+## Load themes and palettes
+```{r load_themes, warning=FALSE, message=FALSE}
+mapTheme <- function(base_size = 12) {
+  theme(
+    text = element_text( color = "black"),
+    plot.title = element_text(size = 16,colour = "black"),
+    plot.subtitle=element_text(face="italic"),
+    plot.caption=element_text(hjust=0),
+    axis.ticks = element_blank(),
+    panel.background = element_blank(),axis.title = element_blank(),
+    axis.text = element_blank(),
+    axis.title.x = element_blank(),
+    axis.title.y = element_blank(),
+    panel.grid.minor = element_blank(),
+    panel.border = element_rect(colour = "black", fill=NA, size=2),
+    strip.text.x = element_text(size = 14))
+}
+
+plotTheme <- function(base_size = 12) {
+  theme(
+    text = element_text( color = "black"),
+    plot.title = element_text(size = 16,colour = "black"),
+    plot.subtitle = element_text(face="italic"),
+    plot.caption = element_text(hjust=0),
+    axis.ticks = element_blank(),
+    panel.background = element_blank(),
+    panel.grid.major = element_line("grey80", size = 0.1),
+    panel.grid.minor = element_blank(),
+    panel.border = element_rect(colour = "black", fill=NA, size=2),
+    strip.background = element_rect(fill = "grey80", color = "white"),
+    strip.text = element_text(size=12),
+    axis.title = element_text(size=12),
+    axis.text = element_text(size=10),
+    plot.background = element_blank(),
+    legend.background = element_blank(),
+    legend.title = element_text(colour = "black", face = "italic"),
+    legend.text = element_text(colour = "black", face = "italic"),
+    strip.text.x = element_text(size = 14)
+  )
+}
+qBr <- function(df, variable, rnd) {
+  if (missing(rnd)) {
+    as.character(quantile(round(df[[variable]],0),
+                          c(.01,.2,.4,.6,.8), na.rm=T))
+  } else if (rnd == FALSE | rnd == F) {
+    as.character(formatC(quantile(df[[variable]]), digits = 3),
+                 c(.01,.2,.4,.6,.8), na.rm=T)
+  }
+}
+
+q5 <- function(variable) {as.factor(ntile(variable, 5))}
+
+# Load hexadecimal color palette
+# Discrete from YlGnBu colorbrewer palette
+# This way also the lightest is yellow, won't get confused with NA
+palette5.YlGnBu <- c("#ffffcc","#a1dab4","#41b6c4","#2c7fb8","#253494")
+
+# Here's a palette of two colors for TOD and Non-TOD, similar to what we used in lab.
+paletteTOD <- c("#fdb863", "#80cdc1")
+```
+
+# Introduction
+
+```{r}
+
+```
+
+# Data Wrangling
+
+```{r data_wrangling, message=FALSE, warning=FALSE, include=TRUE, results='hide'}
+
+# Creating a vector of census variables
+acs_vars_DC <- c("B02001_001E", # Estimate!!Total population by race
+                "B02001_002E", # People describing themselves as "white alone"
+                "B02001_003E", # People describing themselves as "black" or "african-american" alone
+                "B15001_050E", # Females with bachelors degrees
+                "B15001_009E", # Males with bachelors degrees
+                "B19013_001E", # Median HH income
+                "B25058_001E", # Median rent
+                "B06012_002E", # Total poverty
+                "B08301_001E", # People who have means of transportation to work
+                "B08301_002E", # Total people who commute by car, truck, or van
+                "B08301_010E", # Total people who commute by public transportation"
+                "B03002_012E", # Estimate Total Hispanic or Latino by race
+                "B19326_001E") # Median income in past 12 months (inflation-adjusted)
+
+
+# ---- Washington, DC - Census Data - 2009 ----
+tracts2009 <- 
+  get_acs(geography = "tract", 
+          variables = acs_vars_DC, 
+          year=2009, 
+          state=11, 
+          geometry=T, 
+          output="wide") %>%
+  st_transform('ESRI:102685') %>% # using the state plane of Maryland for a projection
+  rename(TotalPop = B02001_001E, 
+         Whites = B02001_002E,
+         Blacks = B02001_003E,
+         FemaleBachelors = B15001_050E, 
+         MaleBachelors = B15001_009E,
+         MedHHInc = B19013_001E, 
+         MedRent = B25058_001E,
+         TotalPoverty = B06012_002E,
+         TotalCommute = B08301_001E,
+         CarCommute = B08301_002E,
+         PubCommute = B08301_010E,
+         TotalHispanic = B03002_012E,
+         MedInc = B19326_001E) %>%
+  dplyr::select(-NAME, -starts_with("B0"), -starts_with("B1"), -starts_with("B2")) %>%
+  mutate(pctWhite = (ifelse(TotalPop > 0, Whites / TotalPop,0))*100,
+         pctBlack = (ifelse(TotalPop > 0, Blacks / TotalPop,0))*100,
+         pctHis = (ifelse(TotalPop >0, TotalHispanic/TotalPop,0))*100,
+         pctBlackorHis = (ifelse (TotalPop>0, (Blacks+TotalHispanic)/TotalPop,0)) *100,
+         pctBachelors = (ifelse(TotalPop > 0, ((FemaleBachelors + MaleBachelors) / TotalPop),0)) *100,
+         pctPoverty = (ifelse(TotalPop > 0, TotalPoverty / TotalPop, 0))*100,
+         pctCarCommute = (ifelse(TotalCommute > 0, CarCommute / TotalCommute,0))*100,
+         pctPubCommute = (ifelse(TotalCommute > 0, PubCommute / TotalCommute,0))*100,
+         year = "2009") %>%
+  dplyr::select(-Whites, -Blacks, -FemaleBachelors, -MaleBachelors, -TotalPoverty, -CarCommute, -PubCommute, -TotalCommute, -TotalHispanic)
+
+# ---- Washington, DC - Census Data - 2017 ----
+tracts2017 <- 
+  get_acs(geography = "tract", 
+          variables = acs_vars_DC, 
+          year=2017, 
+          state=11, 
+          geometry=T, 
+          output="wide") %>%
+  st_transform('ESRI:102685') %>%
+  rename(TotalPop = B02001_001E, 
+         Whites = B02001_002E,
+         Blacks = B02001_003E,
+         FemaleBachelors = B15001_050E, 
+         MaleBachelors = B15001_009E,
+         MedHHInc = B19013_001E, 
+         MedRent = B25058_001E,
+         TotalPoverty = B06012_002E,
+         TotalCommute = B08301_001E,
+         CarCommute = B08301_002E,
+         PubCommute = B08301_010E,
+         TotalHispanic = B03002_012E,
+         MedInc = B19326_001E) %>%
+  dplyr::select(-NAME, -starts_with("B0"), -starts_with("B1"), -starts_with("B2")) %>%
+  mutate(pctWhite = (ifelse(TotalPop > 0, Whites / TotalPop,0))*100,
+         pctBlack = (ifelse(TotalPop > 0, Blacks / TotalPop,0))*100,
+         pctHis = (ifelse(TotalPop >0, TotalHispanic/TotalPop,0))*100,
+         pctBlackorHis = (ifelse (TotalPop>0, (Blacks+TotalHispanic)/TotalPop,0)) *100,
+         pctBachelors = (ifelse(TotalPop > 0, ((FemaleBachelors + MaleBachelors) / TotalPop),0)) *100,
+         pctPoverty = (ifelse(TotalPop > 0, TotalPoverty / TotalPop, 0))*100,
+         pctCarCommute = (ifelse(TotalCommute > 0, CarCommute / TotalCommute,0))*100,
+         pctPubCommute = (ifelse(TotalCommute > 0, PubCommute / TotalCommute,0))*100,
+         year = "2017") %>%
+  dplyr::select(-Whites, -Blacks, -FemaleBachelors, -MaleBachelors, -TotalPoverty, -CarCommute, -PubCommute, -TotalCommute, -TotalHispanic)
+
+
+# ---- Combining 2009 and 2017 data ----
+allTracts <- rbind(tracts2009,tracts2017)
+
+# ---- Wrangling Transit Open Data (WMATA)----
+# Bringing in data for WMATA stops (stations) 
+wmataStops <- 
+  rbind(
+    st_read("https://opendata.arcgis.com/datasets/54018b7f06b943f2af278bbe415df1de_52.geojson") %>% 
+      select(NAME, LINE)) %>%
+  st_transform(st_crs(tracts2009))
+
+wmataStops <- wmataStops %>%
+  mutate(LINE = strsplit(as.character(LINE), ",")) %>%
+  unnest(LINE) %>%
+  mutate(across(where(is.character), str_trim)) %>%
+  mutate(LINE = replace(LINE,LINE == "slvr", "silver"))%>%
+  mutate(LINE = replace(LINE,LINE == "yllw", "yellow"))%>%
+  mutate(LINE = replace(LINE,LINE == "grn", "green"))
+
+# Visualizing wmata stops. Note that overlapping lines have overlapping points
+ggplot() + 
+  geom_sf(data=st_union(tracts2009)) +
+  geom_sf(data=wmataStops, 
+          aes(colour = LINE),
+          show.legend = "point", size= 2, alpha = 0.5) +
+  scale_colour_manual(values = c("red" = "red", "orange" = "orange", "yellow" = "yellow", "green" = "green", "blue" = "blue", "silver" = "gray")) +
+  labs(title="WMATA Stops", 
+       subtitle="Washington, DC", 
+       caption="Source: opendata.dc.gov") +
+  mapTheme()
+
+# Bringing in data for WMATA lines ----
+wmataLines <- 
+  rbind(
+    st_read("https://opendata.arcgis.com/datasets/a29b9dbb2f00459db2b0c3c56faca297_106.geojson") %>%
+      select(NAME)) %>%
+    st_transform(st_crs(tracts2009))
+
+
+# --- Relating WMATA Stops and Tracts ----
+
+# Creating buffers (in feet - note the CRS) around WMATA stops
+# Both a buffer for each stop, and a union of the buffers, and then bind these objects together
+
+wmataBuffers <- 
+  rbind(
+    st_buffer(wmataStops, 2640) %>% # projection is in feet
+      mutate(Legend = "Buffer") %>%
+      dplyr::select(Legend),
+    st_union(st_buffer(wmataStops, 2640)) %>%
+      st_sf() %>%
+      mutate(Legend = "Unioned Buffer"))
+
+# ---- Small multiple facet_wrap plot showing both buffers ----
+
+ggplot() +
+  geom_sf(data=wmataBuffers) +
+  geom_sf(data=wmataStops, show.legend = "point") +
+  facet_wrap(~Legend) +
+  mapTheme()
+
+# ---- Spatial operations ----
+
+# sf object with ONLY the unioned buffer
+buffer <- filter(wmataBuffers, Legend=="Unioned Buffer")
+
+# Showing that we examine the three different spatial selection types 
+# to further illustrate why the select by centroids method is best
+# based on tracts2009
+
+# Clip
+clip <- 
+  st_intersection(buffer, tracts2009) %>%
+  dplyr::select(TotalPop) %>%
+  mutate(Selection_Type = "Clip")
+
+# Spatial selection
+selection <- 
+  tracts2009[buffer,] %>%
+  dplyr::select(TotalPop) %>%
+  mutate(Selection_Type = "Spatial Selection")
+
+# Centroid-in-polygon join to see which tracts have their centroid in the buffer
+selectCentroids <-
+  st_centroid(tracts2009)[buffer,] %>%
+  st_drop_geometry() %>%
+  left_join(dplyr::select(tracts2009, GEOID)) %>%
+  st_sf() %>%
+  dplyr::select(TotalPop) %>%
+  mutate(Selection_Type = "Select by Centroids")
+
+# Visualizing using Total Population as the fill
+allTracts.group.TotalPop <- 
+  rbind(clip, selection, selectCentroids)
+    
+SpatialSelectionTypes2009tracts <-
+      ggplot(allTracts.group.TotalPop)+
+      geom_sf(data = st_union(tracts2009))+
+      geom_sf(aes(fill = TotalPop)) +
+      labs(title = "Total Population within 1/2 mi of a WMATA station, 2009", subtitle = "Three types of spatial selection") +
+      facet_wrap(~Selection_Type) +
+      mapTheme() + 
+      theme(plot.title = element_text(size=20))
+SpatialSelectionTypes2009tracts
+
+# Centroid joins as above, then "disjoin" to get the ones that *don't* join
+# Then, add them all together
+# Contains a correct 2009-2017 inflation calculation
+allTracts.group <- 
+  rbind(
+    st_centroid(allTracts)[buffer,] %>%
+      st_drop_geometry() %>%
+      left_join(allTracts) %>%
+      st_sf() %>%
+      mutate(TOD = "TOD"),
+    st_centroid(allTracts)[buffer, op = st_disjoint] %>%
+      st_drop_geometry() %>%
+      left_join(allTracts) %>%
+      st_sf() %>%
+      mutate(TOD = "Non-TOD")) %>%
+  mutate(MedRent.inf = ifelse(year == "2009", MedRent * 1.14, MedRent)) 
+
+# Visualizing Time/Space Groups
+TimeSpaceGrps <-
+  ggplot(allTracts.group)+
+  geom_sf(data = st_union(tracts2009))+
+  geom_sf(aes(fill = TOD)) +
+  labs(title = "Time/Space Groups") +
+  facet_wrap(~year)+
+  scale_fill_manual(values = paletteTOD)+
+  mapTheme() + 
+  theme(plot.title = element_text(size=22))
+TimeSpaceGrps
+
+```
+
+# Four small-multiple (2009 & 2017) visualizations comparing four selected Census variables across time and space (TOD vs. non-TOD)
+```{r}
+
+```
+
+## Visualizing Median Rent
+```{r task2_MedianRent, warning=FALSE, message=FALSE}
+## NEED TO DO: add the wmata line to the legend
+
+mapsMedRent <-
+  ggplot(allTracts.group)+
+  geom_sf(data = st_union(tracts2009))+
+  geom_sf(aes(fill = q5(MedRent.inf)), color = NA, alpha = 0.75) +
+  geom_sf(data = buffer, fill = "transparent", color = "red", size = 1.25)+
+  geom_sf(data = wmataLines, color = "black", size = 1)+
+  scale_fill_manual(values = palette5.YlGnBu,
+                    labels = qBr(allTracts.group, "MedRent.inf"),
+                    name = "Median Rent ($)\n(Quintile Breaks)") +
+  labs(title = "Median Rent by Census Tract, 2009-2017", subtitle = "Real Dollars; Red border denotes areas close to WMATA stations") +
+  facet_wrap(~year)+
+  mapTheme() + 
+  theme(plot.title = element_text(size=22))
+mapsMedRent
+```
+
+## Visualizing Percent of Total Population who Identify as "White Alone"
+```{r task2_PercentWhite, warning=FALSE, message=FALSE}
+## NEED TO DO: add the wmata line to the legend
+
+mapsPctWhite <-
+  ggplot(allTracts.group)+
+  geom_sf(data = st_union(tracts2009))+
+  geom_sf(aes(fill = q5(pctWhite)), color = NA, alpha = 0.75) +
+  geom_sf(data = buffer, fill = "transparent",color = "red", size = 1.25)+
+  geom_sf(data = wmataLines, color = "black", size = 1)+
+  scale_fill_manual(values = palette5.YlGnBu,
+                    labels = qBr(allTracts.group, "pctWhite"),
+                    name = "Percent White\n(Quintile Breaks)") +
+  labs(title = "% of White population 2009-2017", subtitle = "Red border denotes areas close to WMATA stations") +
+  facet_wrap(~year)+
+  mapTheme() + 
+  theme(plot.title = element_text(size=22))
+mapsPctWhite
+```
+
+## Visualizing [VARIABLE 3]
+```{r}
+
+```
+
+## Visualizing [VARIABLE 4]
+```{r}
+
+```
+
+# Table: Comparing Selected Census Variables across Time and Space (TOD vs. non-TOD)
+```{r comparison_table}
+allTracts.Summary <- 
+  st_drop_geometry(allTracts.group) %>%
+  group_by(year, TOD) %>%
+  summarize(Rent = mean(MedRent, na.rm = T),
+            Population = mean(TotalPop, na.rm = T),
+            Percent_White = mean(pctWhite, na.rm = T),
+            Percent_Black = mean(pctBlack, na.rm = T),
+            Percent_HispanicLatino = mean(pctHis, na.rm=T),
+            Percent_BlackorHispanic = mean (pctBlackorHis, na.rom=T),
+            Percent_Bach = mean(pctBachelors, na.rm = T),
+            Percent_Poverty = mean(pctPoverty, na.rm = T),
+            Percent_CarCommute = mean(pctCarCommute, na.rm = T),
+            Percent_PubCommute = mean(pctPubCommute, na.rm = T),
+            Median_Income = mean(MedInc, na.rm = T))
+            
+kable(allTracts.Summary) %>%
+  kable_styling() %>%
+  footnote(general_title = "\n",
+           general = "Summary for All Tracts in Washington, DC")
+
+allTracts.Summary %>%
+  unite(year.TOD, year, TOD, sep = ": ", remove = T) %>%
+  gather(Variable, Value, -year.TOD) %>%
+  mutate(Value = round(Value, 2)) %>%
+  spread(year.TOD, Value) %>%
+  kable() %>%
+  kable_styling() %>%
+  footnote(general_title = "\n",
+           general = "Summary for All Tracts in Washington, DC")
+allTracts.Summary
+```
+
+# Grouped Bar Graphs: Comparing Selected Census Variables across Time and Space (TOD vs. non-TOD)
+```{r comparison_groupedbars}
+allTracts.Summary %>%
+  gather(Variable, Value, -year, -TOD) %>%
+  ggplot(aes(year, Value, fill = TOD)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  facet_wrap(~Variable, scales = "free", ncol=3) +
+  scale_fill_manual(values = paletteTOD) +
+  labs(title = "Indicator differences across time and space") +
+  plotTheme() + theme(legend.position="bottom")
+
+```
+
+# Graduated Symbol Maps
+intro text
+```{r centroid_wrangling_TOD_filter}
+
+# More wrangling to get centroids for all tracts, both years, filtering by TOD
+allTracts.group.TODonly <-
+  filter(allTracts.group, TOD =="TOD")
+
+allTracts.group.TODonly.centroids <- sf::st_centroid(allTracts.group.TODonly) %>%
+  dplyr::mutate(lat = sf::st_coordinates(.)[,1],
+                lon = sf::st_coordinates(.)[,2])
+allTracts.group.TODonly.centroids
+```
+
+## Graduated symbol map of population within 1/2 mi of each wmata station
+```{r}
+
+```
+
+## Graduated symbol map of median rent within 1/2 mi of each wmata station
+```{r}
+
+```
+
+# Crime section
+Intro text
+## Crime data wrangling
+```{r}
+#2009 Crime data wrangling
+```
+```{r}
+#2017 Crime data wrangling
+```
+```{r}
+#Some code and some analyses, etc
+```
+## Multiple ring buffer
+
+
