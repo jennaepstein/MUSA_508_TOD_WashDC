@@ -164,6 +164,17 @@ tracts2017 <-
 
 allTracts <- rbind(tracts2009,tracts2017)
 
+#------Dropping tracts
+
+allTracts <- subset(allTracts, GEOID!="11001006202" & 
+                      GEOID!="11001000201" & 
+                      GEOID!= "11001008905" & 
+                      GEOID!= "11001009809" & 
+                      GEOID!= "11001008600" & 
+                      GEOID!= "11001006804" & 
+                      GEOID!= "11001001600" &
+                      GEOID!= "11001000901")
+
 # ---- Wrangling Transit Open Data ----
 
 wmataStops <- 
@@ -412,23 +423,25 @@ allTracts.Summary %>%
 wmataStopscoord <- wmataStops %>% 
                   st_transform(st_crs('ESRI:102685')) %>% 
                   dplyr::mutate(x = sf::st_coordinates(.)[,1], 
-                                y = sf::st_coordinates(.)[,2])
+                                y = sf::st_coordinates(.)[,2]) %>%
+                  distinct(NAME, .keep_all=TRUE) %>%
+                  dplyr::select(-LINE)
 
 wmataBuffersStops <- 
   st_transform(wmataStopscoord, ('ESRI:102685'))%>%
     st_buffer(2640) %>% # projection is in feet
-      dplyr::select(NAME, x, y)
+      dplyr::select(NAME, geometry)
 
 joinBuffersStopsTracts <-
   st_join(allTracts.group, wmataBuffersStops)%>%
-  st_drop_geometry() %>%
   filter(!is.na(NAME)) 
 
 # grouping by wmata stop - population
 totalPopbyStop <- joinBuffersStopsTracts %>%
   group_by(NAME, year, .add=TRUE) %>%
-  distinct(NAME, .keep_all=TRUE) %>%
-  summarize(sumPop = sum(TotalPop), x, y)
+  summarize(sumPop = sum(TotalPop))%>%
+  st_drop_geometry() %>%
+  right_join(wmataStopscoord, by="NAME")
   
 # map
 ## legend work needed - merge the legend items so sumPop circles are
@@ -436,7 +449,7 @@ map.TotalPopbyStop <-
   ggplot()+
   geom_sf(data=allTracts.group, color="white", fill="gray", alpha=0.4)+
   geom_point(data=totalPopbyStop, aes(x=x, y=y, size=sumPop), color='blue', alpha=0.5)+
-  scale_size_area() +
+  scale_size_area(max_size = 15) +
   guides(size=guide_legend("Sum of Population")) +
   geom_sf(data=wmataLines, size=1, color="black", alpha=0.8) + 
   aes() +
@@ -451,8 +464,9 @@ map.TotalPopbyStop
 # grouping by wmata stop - medrent
 avgMedRentbyStop <- joinBuffersStopsTracts %>%
     group_by(NAME, year, .add=TRUE) %>%
-    distinct(NAME, .keep_all=TRUE) %>%
-    summarize(AvgRent = mean(MedRent.inf, na.rm = TRUE), x, y)
+    summarize(AvgRent = mean(MedRent.inf, na.rm = TRUE)) %>%
+    st_drop_geometry() %>%
+    right_join(wmataStopscoord, by="NAME")
 
 # map
 map.avgMedRentbyStop <-
@@ -473,8 +487,9 @@ map.avgMedRentbyStop
 # grouping by wmata stop - population AND medrent
 joinPopRentbyStop <- joinBuffersStopsTracts %>%
   group_by(NAME, year, .add=TRUE) %>%
-  distinct(NAME, .keep_all=TRUE) %>%
-  summarize(sumPop = sum(TotalPop), AvgRent = mean(MedRent.inf, na.rm = TRUE), x, y)
+  summarize(sumPop = sum(TotalPop), AvgRent = mean(MedRent.inf, na.rm = TRUE)) %>%
+  st_drop_geometry() %>%
+  right_join(wmataStopscoord, by="NAME")
 
 # map
 ## legend work needed - avg rent bar, put lowest on top, but keep it  yellow
@@ -482,6 +497,7 @@ map.gradsymbolcombo <-
   ggplot()+
   geom_sf(data=allTracts.group, color="white", fill="gray", alpha=0.4)+
   geom_point(data=joinPopRentbyStop, aes(x=x, y=y, size=sumPop, color=AvgRent))+
+    scale_size_area(max_size = 13) +
     guides(size=guide_legend("Sum of Population"))+
     scale_color_viridis(option="D", direction= -1) +
   geom_sf(data=wmataLines, size=1, color="black") + 
@@ -613,3 +629,4 @@ ggplot(subset(DC_2017_Crime, OFFENSE =="ROBBERY")) +
        subtitle="Washington, DC", 
        caption="Data: US Census Bureau; opendata.dc.gov") +
   mapTheme()
+
