@@ -1,0 +1,867 @@
+---
+title: "Examining Transit-Oriented Development in Washington, DC"
+author: "Jenna Epstein"
+date: "9/25/2020"
+output: 
+  html_document:
+    toc: true
+    toc_float: true
+
+---
+Other group members: David Seunglee Park, Leah Shapiro
+
+# Introduction
+Washington, DC has witnessed a shift in the past decade, where primarily Black and low-income residents have been pushed out of the heart of the city and into the northeast and southeast quadrants. Such displacement has pushed them further away from clusters of metrorail stops. How are these groups affected by transit-oriented development (TOD)? Does this gentrification mean rents are higher in transit-rich areas relative to city areas without as much transit access? Are individuals in Washington, DC willing to pay higher rents for access to transit? Who are the people paying these higher rents?
+The purpose of this analysis is to explore these questions through the relationship between access to the WMATA metrorail and rent.
+
+Five time/space indicators - median rent, percent white, percent black,  percent of people who have a means of transportation to work, and median household income - were selected to help tell a more holistic story about the characteristics of residents and the relationship to transit-rich areas. Furthermore, the analysis looks at concentrations of robbery incidents across the city to explore the spatial relationship between a specific crime type, rent, and transit. For the purpose of this analysis, "transit" refers to the Washington, DC Metro Area Transit Authority (WMATA) metrorail lines within the boundary of Washington, DC proper. 
+
+Note: While out of the geographic scope for this study, it would be advisable to look at these time/space indicators in the metro area (Maryland and Northern Virginia).
+
+# Set up
+```{r setup, include=TRUE, message=FALSE, warning=FALSE}
+knitr::opts_chunk$set(
+	echo = TRUE)
+
+library(tidyverse)
+library(tidycensus)
+library(sf)
+library(kableExtra)
+library(tigris)
+library(viridis)
+
+options(scipen=999)
+options(tigris_class = "sf")
+
+census_api_key("41e1c0d912341017fa6f36a5da061d3b23de335e", overwrite = TRUE)
+```
+
+## Load Themes and Palettes
+```{r load_themes, warning=FALSE, message=FALSE}
+mapTheme <- function(base_size = 12) {
+  theme(
+    text = element_text( color = "black"),
+    plot.title = element_text(size = 16,colour = "black"),
+    plot.subtitle=element_text(face="italic"),
+    plot.caption=element_text(hjust=0),
+    axis.ticks = element_blank(),
+    panel.background = element_blank(),axis.title = element_blank(),
+    axis.text = element_blank(),
+    axis.title.x = element_blank(),
+    axis.title.y = element_blank(),
+    panel.grid.minor = element_blank(),
+    panel.border = element_rect(colour = "black", fill=NA, size=2),
+    strip.text.x = element_text(size = 14))
+}
+
+plotTheme <- function(base_size = 12) {
+  theme(
+    text = element_text( color = "black"),
+    plot.title = element_text(size = 16,colour = "black"),
+    plot.subtitle = element_text(face="italic"),
+    plot.caption = element_text(hjust=0),
+    axis.ticks = element_blank(),
+    panel.background = element_blank(),
+    panel.grid.major = element_line("grey80", size = 0.1),
+    panel.grid.minor = element_blank(),
+    panel.border = element_rect(colour = "black", fill=NA, size=2),
+    strip.background = element_rect(fill = "grey80", color = "white"),
+    strip.text = element_text(size=12),
+    axis.title = element_text(size=12),
+    axis.text = element_text(size=10),
+    plot.background = element_blank(),
+    legend.background = element_blank(),
+    legend.title = element_text(colour = "black", face = "italic"),
+    legend.text = element_text(colour = "black", face = "italic"),
+    strip.text.x = element_text(size = 14)
+  )
+}
+qBr <- function(df, variable, rnd) {
+  if (missing(rnd)) {
+    as.character(quantile(round(df[[variable]],0),
+                          c(.01,.2,.4,.6,.8), na.rm=T))
+  } else if (rnd == FALSE | rnd == F) {
+    as.character(formatC(quantile(df[[variable]]), digits = 3),
+                 c(.01,.2,.4,.6,.8), na.rm=T)
+  }
+}
+
+q5 <- function(variable) {as.factor(ntile(variable, 5))}
+
+# Load a hexadecimal color palette - discrete colors from the YlGnBu colorbrewer palette
+# This way also the lightest is yellow, won't get confused with NA
+palette5.YlGnBu <- c("#ffffcc","#a1dab4","#41b6c4","#2c7fb8","#253494")
+
+# Load a palette of two colors for TOD and Non-TOD
+paletteTOD <- c("#fdb863", "#80cdc1")
+
+# Load a palette of two colors for years
+paletteYears <- c("#73D055FF", "#39568CFF")
+
+```
+
+# Data Wrangling
+Below is the initial data wrangling work to call ACS variables from the Census, create some new calculated variables, and associate them with the 2009 and 2017 Census tracts. Note that a lot of this analysis uses calculations related to total population. Given the transience of Washington, DC's population (with single young professionals and political workers and appointees moving in and out), coupled with the focus on calculated variables for race as a share of total population, we decided to use the total population estimate by race (B02001_001) instead of total population by households.
+
+Projection: The state plane of Maryland (ESRI:102685) was selected as the projection of spatial data included in this analysis due to proximity. Washington, DC does not have a state plane projection.
+
+## Census Tracts
+The first step in the data wrangling involves pulling down the ACS variables of interest and combining the variables in a vector, making it easier to call all of them at once when associating them with the tracts.
+```{r data_wrangling_vars, message=FALSE, warning=FALSE, include=TRUE, results='hide'}
+# ---- Census variables, ACS 5-year estimates ----
+acs_vars_DC <- c("B02001_001E", # Total population
+                "B02001_002E", # People describing themselves as "White alone"
+                "B02001_003E", # People describing themselves as "Black" or "African-American" alone
+                "B25058_001E", # Median rent
+                "B19013_001E", # Median HH Income
+                "B08301_001E") # People who have means of transportation to work)
+```
+
+Washington, DC's census data can be called with one state FIPS code (11). Using the get_acs() call, tract-level geometry for each of the variables is gathered. This process starts with gathering the information for 2009. The mutate() command is used to create some calculated variables based on the initial numbers. Then, those variables are used to make the new data are dropped using select(-). This process is then repeated for the 2017 data. Then, the two dataframes are bound together using rbind().
+```{r data_wrangling_tracts, message=FALSE, warning=FALSE, include=TRUE, results='hide'}
+# ---- Washington, DC - Census Data - 2009 ----
+tracts2009 <- 
+  get_acs(geography = "tract", 
+          variables = acs_vars_DC, 
+          year=2009, 
+          state=11, 
+          geometry=T, 
+          output="wide") %>%
+  st_transform('ESRI:102685') %>% # using the state plane of Maryland for a projection
+  rename(TotalPop = B02001_001E, 
+         Whites = B02001_002E,
+         Blacks = B02001_003E,
+         MedRent = B25058_001E,
+         MedHHInc = B19013_001E,
+         TransportToWork = B08301_001E) %>%
+  dplyr::select(-NAME, -starts_with("B0"), -starts_with("B1"), -starts_with("B2")) %>%
+  mutate(pctWhite = (ifelse(TotalPop > 0, Whites / TotalPop,0))*100,
+         pctBlack = (ifelse(TotalPop > 0, Blacks / TotalPop,0))*100,
+         pctTransportToWork = (ifelse(TotalPop > 0, TransportToWork / TotalPop,0))*100,
+         year = "2009") %>%
+  dplyr::select(-Whites, -Blacks, -TransportToWork)
+
+# ---- Washington, DC - Census Data - 2017 ----
+
+tracts2017 <- 
+  get_acs(geography = "tract", 
+          variables = acs_vars_DC, 
+          year=2017, 
+          state=11, 
+          geometry=T, 
+          output="wide") %>%
+  st_transform('ESRI:102685') %>% # using the state plane of Maryland for a projection
+  rename(TotalPop = B02001_001E, 
+         Whites = B02001_002E,
+         Blacks = B02001_003E,
+         MedRent = B25058_001E,
+         MedHHInc = B19013_001E,
+         TransportToWork = B08301_001E) %>%
+  dplyr::select(-NAME, -starts_with("B0") ,-starts_with("B1"), -starts_with("B2")) %>%
+  mutate(pctWhite = (ifelse(TotalPop > 0, Whites / TotalPop,0))*100,
+         pctBlack = (ifelse(TotalPop > 0, Blacks / TotalPop,0))*100,
+         pctTransportToWork = (ifelse(TotalPop > 0, TransportToWork / TotalPop,0))*100,
+         year = "2017") %>%
+  dplyr::select(-Whites, -Blacks, -TransportToWork)
+
+# ---- Combining 2009 and 2017 data ----
+allTracts <- rbind(tracts2009,tracts2017)
+```
+
+The data cleaning process reveals that there are a few census tracts that either have incomplete data for the variables or extreme outliers. For example, the census tract encompassing the White House and surrounding property does not have median rent associated with it. Similar cases arise for the census tract that is entirely the closed Georgetown University campus, the American University campus and neighboring hospital, and those close to the border with Virginia that are primarily water and federal buildings. The choice was made to omit such census tracts.
+```{r data_wrangling_droptracts, message=FALSE, warning=FALSE, include=TRUE, results='hide'}
+# ---- Dropping tracts ----
+allTracts <- subset(allTracts, GEOID!="11001006202" & 
+                      GEOID!="11001000201" & 
+                      GEOID!= "11001008905" & 
+                      GEOID!= "11001009809" & 
+                      GEOID!= "11001008600" & 
+                      GEOID!= "11001006804" & 
+                      GEOID!= "11001001600" &
+                      GEOID!= "11001000901")
+```
+
+Throughout the document, the dropped census tracts appear with a light grey fill, as shown below.
+```{r data_wrangling_showtractmaps, message=FALSE, warning=FALSE, include=TRUE, results='hide'}
+# ---- Reading in DC boundary ----
+boundaryDC2009 <-
+    st_read("https://opendata.arcgis.com/datasets/7241f6d500b44288ad983f0942b39663_10.geojson") %>%
+  st_transform(st_crs(tracts2009))%>%
+  mutate(year = "2009")
+
+boundaryDC2017 <-
+  st_read("https://opendata.arcgis.com/datasets/7241f6d500b44288ad983f0942b39663_10.geojson") %>%
+  st_transform(st_crs(tracts2009))%>%
+  mutate(year = "2017")
+
+boundaryDC <-
+  rbind(boundaryDC2009,boundaryDC2017)
+
+# ---- Mapping census tracts ----
+map.CensusTracts <-
+  ggplot()+
+  geom_sf(data=boundaryDC, fill="grey", color="white")+
+  geom_sf(data = allTracts, fill="#253494", color="white", alpha=0.8)+
+  labs(title = "Census Tracts", subtitle = "Gray tracts are not included in analysis") +
+  facet_wrap(~year)+
+  mapTheme() + 
+  theme(plot.title = element_text(size=22))
+map.CensusTracts
+```
+
+## Open Transit Data: Washington, DC Metro Area Transit Authority (WMATA) - Metrorail
+
+The scope of this exploration is the metrorail system within the city of Washington, DC and therefore does not include any of the metro area that extends into Maryland and Virginia. When pulling transit stop data for the city proper, the analysis does not focus on differences around specific lines, especially since stops in the city often serve multiple lines.
+
+```{r data_wrangling_transit, message=FALSE, warning=FALSE, include=TRUE, results='hide'}
+# ---- Wrangling Transit Open Data ----
+wmataStops <- 
+  rbind(
+    st_read("https://opendata.arcgis.com/datasets/54018b7f06b943f2af278bbe415df1de_52.geojson") %>% 
+      select(NAME, LINE)) %>%
+  st_transform(st_crs(tracts2009))
+  
+# cleaning the data
+wmataStops <- wmataStops %>%
+  mutate(LINE = strsplit(as.character(LINE), ",")) %>%
+  unnest(LINE) %>%
+  mutate(across(where(is.character), str_trim)) %>%
+  mutate(LINE = replace(LINE,LINE == "slvr", "silver"))%>%
+  mutate(LINE = replace(LINE,LINE == "yllw", "yellow"))%>%
+  mutate(LINE = replace(LINE,LINE == "grn", "green"))
+```
+
+```{r visualize_wmata, message=FALSE, warning=FALSE, include=TRUE, results='hide'}
+# ---- Visualize WMATA metrorail stops ----
+ggplot() + 
+  geom_sf(data=st_union(tracts2009)) +
+  geom_sf(data=wmataStops, 
+          aes(),
+          show.legend = "point", size= 2) +
+  labs(title="WMATA Metrorail Stops", 
+       subtitle="Washington, DC", 
+       caption="Source: opendata.dc.gov") +
+  mapTheme()
+
+# ---- Bringing in WMATA Line data ----
+# Bringing in the line vector data to use in basemaps later
+wmataLines <- 
+  rbind(
+    st_read("https://opendata.arcgis.com/datasets/a29b9dbb2f00459db2b0c3c56faca297_106.geojson") %>%
+      select(NAME)) %>%
+    st_transform(st_crs(tracts2009))
+```
+
+## Creating Buffers
+This part of the data wrangling creates buffers (in feet) around WMATA stops in DC.
+```{r buffers, message=FALSE, warning=FALSE, include=TRUE, results='hide'}
+# --- Relating WMATA Stops and Tracts ----
+
+# Buffer for each stop, and a union of the buffers, and then bind these objects together
+
+wmataBuffers <- 
+  rbind(
+    st_buffer(wmataStops, 2640) %>% # projection is in feet
+      mutate(Legend = "Buffer") %>%
+      dplyr::select(Legend),
+    st_union(st_buffer(wmataStops, 2640)) %>%
+      st_sf() %>%
+      mutate(Legend = "Unioned Buffer"))
+
+
+# ---- Small multiple facet_wrap plot showing both buffers ----
+
+ggplot() +
+  geom_sf(data=wmataBuffers) +
+  geom_sf(data=wmataStops, show.legend = "point") +
+  facet_wrap(~Legend) +
+  mapTheme()
+```
+
+## Spatial Operations with the Unioned Buffer
+While the analysis uses the select by centroids approach for identifying tracts, three selection types (clip, spatial selection, and select by centroids) are shown below to illuminate the spatial biases that can arise by using one type over another. Using clip changes the geometries of the census tracts are selected by cutting them based on the buffer boundaries (in a "cookie cutter" fashion). This approach often leads to bias associated with the modifiable areal unit problem (MAUP). Tract-level information at the aggregate level would distort calculations and misrepresent the data actually in that altered, clipped geometry.  The spatial selection method includes a whole tract even if just one tiny part of it touches the buffer, which could lead to more tracts being selected than may be useful. Select by centroids - the approach chosen for this analysis - is best suited because it accounts for the tract centroids (gravitational centers of the tract polygons) that intersect the half mile buffer. While not perfect, this approach selects a concise number of tracts based on the buffer's relationship to the centroid.
+
+The series of maps below show these selection types side-by-side and how different geometries or tracts are included in each, using total population as a fill.
+```{r buffers_spatialops, message=FALSE, warning=FALSE, include=TRUE, results='hide'}
+# ---- Spatial operations ----
+
+# sf object with only the unioned buffer
+buffer <- filter(wmataBuffers, Legend=="Unioned Buffer")
+
+# Clip
+clip <- 
+  st_intersection(buffer, tracts2009) %>%
+  dplyr::select(TotalPop) %>%
+  mutate(Selection_Type = "Clip")
+
+# Spatial selection
+selection <- 
+  tracts2009[buffer,] %>%
+  dplyr::select(TotalPop) %>%
+  mutate(Selection_Type = "Spatial Selection")
+
+# Centroid-in-polygon join to see which tracts have their centroid in the buffer
+selectCentroids <-
+  st_centroid(tracts2009)[buffer,] %>%
+  st_drop_geometry() %>%
+  left_join(dplyr::select(tracts2009, GEOID)) %>%
+  st_sf() %>%
+  dplyr::select(TotalPop) %>%
+  mutate(Selection_Type = "Select by Centroids")
+
+# Visualizing using Total Population as the fill
+
+allTracts.group.TotalPop <- 
+  rbind(clip, selection, selectCentroids)
+    
+SpatialSelectionTypes2009tracts <-
+      ggplot(allTracts.group.TotalPop)+
+      geom_sf(data = st_union(tracts2009))+
+      geom_sf(aes(fill = TotalPop)) +
+      labs(title = "Total Population within 1/2 mi of a WMATA station, 2009", subtitle = "Three types of spatial selection") +
+      facet_wrap(~Selection_Type) +
+      mapTheme() + 
+      theme(plot.title = element_text(size=20))
+SpatialSelectionTypes2009tracts
+```
+
+Now that the select by centroids approach is established as the most appropriate, the following creates allTracts.group, which includes a new column for TOD or non-TOD, and a column for median rent in 2009 accounting for inflation.
+```{r buffers_spatialops2, message=FALSE, warning=FALSE, include=TRUE, results='hide'}
+# Centroid joins as above, then "disjoin" to get the ones that *don't* join
+# Then  add them all together
+# Contains a correct 2009-2017 inflation calculation
+
+allTracts.group <- 
+  rbind(
+    st_centroid(allTracts)[buffer,] %>%
+      st_drop_geometry() %>%
+      left_join(allTracts) %>%
+      st_sf() %>%
+      mutate(TOD = "TOD"),
+    st_centroid(allTracts)[buffer, op = st_disjoint] %>%
+      st_drop_geometry() %>%
+      left_join(allTracts) %>%
+      st_sf() %>%
+      mutate(TOD = "Non-TOD")) %>%
+  mutate(MedRent.inf = ifelse(year == "2009", MedRent * 1.14, MedRent))
+```
+
+The map below shows TOD vs. non-TOD census tracts in 2009 and 2017. These maps are similar, with slight differences primarily towards the bottom, where census tract boundaries were altered between these two comparison years.
+```{r time-space-nonTOD-TOD, message=FALSE, warning=FALSE, include=TRUE, results='hide'}
+# Visualize Time/Space Groups
+
+TimeSpaceGrps <-
+  ggplot(allTracts.group)+
+  geom_sf(data = st_union(tracts2009))+
+  geom_sf(aes(fill = TOD)) +
+  labs(title = "Time/Space Groups") +
+  facet_wrap(~year)+
+  scale_fill_manual(values = paletteTOD)+
+  mapTheme() + 
+  theme(plot.title = element_text(size=22))
+TimeSpaceGrps
+```
+
+# Small-Multiple (2009 & 2017) Visualizations Comparing Selected Census Aariables across Time and Space (TOD vs. non-TOD)
+A series of time/space indicators using the variables helps to better understand dynamics in TOD and non-TOD areas. A series of choropleth maps, shaded according to quintile buckets, are employed here. All maps display the data on a census tract level. In addition to median rent, four other indicators were selected.
+
+## Median Rent
+This first set of maps illustrates median rent and the WMATA buffer. From 2009 to 2017, median rent increased in many parts of the city. Particularly of note is the top of the northwest quadrant, which is almost entirely in the highest quintile bucket in 2017 (compared to a mixture of the second-highest and highest quintiles in 2009). This area is also clustered around a line that continues beyond the DC boundary and into some wealthy neighborhoods in bordering Maryland. Overall, these maps illustrate that median rent increased in areas closer to the WMATA stops, suggesting that there is a relationship between demand for transit access and rent.
+```{r task2_MedianRent, warning=FALSE, message=FALSE}
+
+map.MedRent <-
+  ggplot(allTracts.group)+
+  geom_sf(data = st_union(tracts2009))+
+  geom_sf(aes(fill = q5(MedRent.inf)), color = NA, alpha = 0.75) +
+  geom_sf(data = buffer, fill = "transparent", color = "red", size = 1.25)+
+  geom_sf(data = wmataLines, color = "black", size = 1)+
+  scale_fill_manual(values = palette5.YlGnBu,
+                    labels = qBr(allTracts.group, "MedRent.inf"),
+                    name = "Median Rent ($)\n(Quintile Breaks)",
+                    na.value="#f5e9dc") +
+  labs(title = "Median Rent, 2009 & 2017", subtitle = "Real Dollars; Red border denotes areas close to WMATA stations") +
+  facet_wrap(~year)+
+  mapTheme() + 
+  theme(plot.title = element_text(size=22))
+map.MedRent
+```
+
+## Percent of Total Population that Identifies as "White Alone"
+In order to get a better understanding of some demographics, we look to a series of maps to help understand the breakdown. These maps convey the percentage of population that identifies as "White Alone" in 2009 and 2017, and the spatial relationship to transit access. In both years, the majority of census tracts that are higher percentages are in the northwest quadrant. 
+```{r task2_PercentWhite, warning=FALSE, message=FALSE}
+map.PctWhite <-
+  ggplot(allTracts.group)+
+  geom_sf(data = st_union(tracts2009), color="grey")+
+  geom_sf(aes(fill=q5(pctWhite)), color = "grey", alpha = 0.75) +
+  geom_sf(data = buffer, fill = "transparent",color = "red", size = 1.25) +
+  geom_sf(data = wmataLines, color = "black", size = 1)+
+  scale_fill_manual(values = palette5.YlGnBu,
+                    labels = qBr(allTracts.group, "pctWhite"),
+                     name = "Percent White \n(Quintile Breaks)") +
+  labs(title = "Percent of Population that Identifies \nas White, 2009 & 2017", subtitle = "Red border denotes areas close to WMATA stops; \nBlack lines are the metrorail lines within the city") +
+  facet_wrap(~year)+
+  mapTheme() + 
+  theme(plot.title = element_text(size=22))
+map.PctWhite
+```
+
+## Percent of Total Population that Identifies as "Black" or "African-American Alone"
+The maps below, showing the percent of the population identifying as Black, further illustrates the spatial divide along racial lines. Areas with greater percentages of Black populations are in the northeast and southeast areas of the city. The southeast especially, down towards the bottom of the map, had its share of this population increase. Meanwhile, the upper northwest quadrant has tracts with less than one percent of the population identifying as Black, and even those that were around 10% in 2009 in this area dropped to the bottom quintile in 2017. In both years, but especially in 2017, it is clear that majority Black areas are in the east, and have fewer tracts within the transit buffer.
+```{r task2_PercentBlack, include=TRUE, message=FALSE, warning=FALSE}
+map.PctBlack <-
+  ggplot(allTracts.group)+
+  geom_sf(data = st_union(tracts2009), color="grey")+
+  geom_sf(aes(fill = q5(pctBlack)), color = "grey", alpha= 0.75) +
+  geom_sf(data = buffer, fill = "transparent",color = "red", size = 1.25)+
+  geom_sf(data = wmataLines, color = "black", size = 1)+
+  scale_fill_manual(values = palette5.YlGnBu,
+                    labels = qBr(allTracts.group, "pctBlack"),
+                    name = "Percent Black \n(Quintile Breaks)") +
+  labs(title = "Percent of Population that Identifies \nas Black or African-American alone, 2009 & 2017", subtitle = "Red border denotes areas close to WMATA stops; \nBlack lines are the metrorail lines within the city") +
+  facet_wrap(~year)+
+  mapTheme() + 
+  theme(plot.title = element_text(size=22))
+map.PctBlack
+```
+
+##  Percent of Total Population with a Means of Transportation to Work
+These maps below illustrate the breakdown of people in the labor force who have means of transportation (any transportation) to work, by census tract. It is interesting to see that there is a concentration in the northeast and southeast of tracts with a low percentage of people who have a means of transportation to work, even in the areas within the transit buffer. This again provides some incentive to investigate the conditions of these areas in order to understand the barriers of transportation access, and consider affordable residential projects closer inside the buffer. 
+```{r task2_PctTransport, include=TRUE, message=FALSE, warning=FALSE}
+map.pctTransportToWork <-
+  ggplot(allTracts.group)+
+  geom_sf(data = st_union(tracts2009), color="grey")+
+  geom_sf(aes(fill = q5(pctTransportToWork)), color = "grey", alpha= 0.75) +
+  geom_sf(data = buffer, fill = "transparent",color = "red", size = 1.25)+
+  geom_sf(data = wmataLines, color = "black", size = 1)+
+  scale_fill_manual(values = palette5.YlGnBu,
+                    labels = qBr(allTracts.group, "pctTransportToWork"),
+                    name = "% Transport Means to Work \n(Quintile Breaks)") +
+  labs(title = "Percent of Population with Means of \nTransportation to Work, 2009 & 2017", subtitle = "Red border denotes areas close to WMATA stops; \nBlack lines are the metrorail lines within the city") +
+  facet_wrap(~year)+
+  mapTheme() + 
+  theme(plot.title = element_text(size=22))
+map.pctTransportToWork
+```
+
+##  Median Household Income
+The final set of maps show median household income. It is clear that in both years, census tracts with higher median household income are located in the northwest. In 2017, an even greater share of census tracts in the top quintiles are congregated around the center of the city where lots of new developments - notably high-rise apartment complexes and rowhouse renovations - have been constructed.
+
+It is interesting to look at this duo of maps after all of the others, as a pattern starts to emerge where wealthier areas with higher costs of living are congregating around certain metrorail sections. These areas also tend to be the ones with higher share of individuals identifying as White, whereas poorer areas are primarily Black neighborhoods that are further from the transit "hub" of downtown.
+
+```{r task2_MedHHInc, include=TRUE, message=FALSE, warning=FALSE}
+map.MedHHInc <-
+  ggplot(allTracts.group)+
+  geom_sf(data = st_union(tracts2009), color="grey")+
+  geom_sf(aes(fill = q5(MedHHInc)), color = "grey", alpha= 0.75) +
+  geom_sf(data = buffer, fill = "transparent",color = "red", size = 1.25)+
+  geom_sf(data = wmataLines, color = "black", size = 1)+
+  scale_fill_manual(values = palette5.YlGnBu,
+                    labels = qBr(allTracts.group, "MedHHInc"),
+                    name = "Median HH Income \n(Quintile Breaks)") +
+  labs(title = "Median Household Income, 2009 & 2017", subtitle = "Red border denotes areas close to WMATA stops; \nBlack lines are the metrorail lines within the city") +
+  facet_wrap(~year)+
+  mapTheme() + 
+  theme(plot.title = element_text(size=22))
+map.MedHHInc
+```
+
+
+# Table: Comparing Selected Census Variables across Time and Space (TOD vs. non-TOD)
+The data is then grouped by year and TOD, united, gathered, and spread to display it concisely in a table.
+
+```{r comparison_table, include=TRUE, message=FALSE, warning=FALSE}
+allTracts.Summary <- 
+  st_drop_geometry(allTracts.group) %>%
+  group_by(year, TOD) %>%
+  summarize(Rent = mean(MedRent, na.rm = T),
+            Population = mean(TotalPop, na.rm = T),
+            Pct_White = mean(pctWhite, na.rm = T),
+            Pct_Black = mean(pctBlack, na.rm = T),
+            Pct_TransportToWork = mean(pctTransportToWork, na.rm = T),
+            Median_HH_Income = mean(MedHHInc, na.rm=T))
+
+allTracts.Summary %>%
+  unite(year.TOD, year, TOD, sep = ": ", remove = T) %>%
+  gather(Variable, Value, -year.TOD) %>%
+  mutate(Value = round(Value, 2)) %>%
+  spread(year.TOD, Value) %>%
+  kable() %>%
+  kable_styling() %>%
+  footnote(general_title = "\n",
+           general = "Summary for All Tracts in Washington, DC")
+```
+
+# Grouped Bar Graphs: Comparing Selected Census Variables across Time and Space (TOD vs. non-TOD)
+The grouped bar graphs below compare the time/space indicators across TOD and non-TOD areas. The indicators are grouped separately so that those measured by percentages contain the same scale.
+
+```{r comparison_groupedbars_wrangling, include=TRUE, message=FALSE, warning=FALSE}
+# grouping all non-percent indicators
+NonpctvarsallTracts.Summary<- allTracts.Summary %>% dplyr::select(-Pct_White, -Pct_Black, -Pct_TransportToWork)
+# grouping non-percent indicators
+PctvarsallTracts.Summary <- allTracts.Summary %>% dplyr::select(-Rent, -Median_HH_Income, - Population)
+```
+
+This first group of indicators shows differences in median household income, population, and rent. Median household income increased in both TOD and non-TOD areas, but increased much more so in TOD areas, suggesting a growth in wealth in those areas. Population across the city grew, with tracts seeing an average increase from ~3,000 people to over 3,500. However, the distribution between population in non-TOD and TOD areas switched between the years, with a greater number of people living in TOD census tracts than in non-TOD ones. The jump in rent and gap between average median rent in the two categories is also evident. In 2009, rent in the two categories differed by less than 100 dollars. In 2017, however, the difference was over 200 dollars between the two. This increased gap in median rent indicates that people are paying, on average, higher costs to live in transit-rich areas.
+```{r comparison_groupedbars_1, include=TRUE, message=FALSE, warning=FALSE}
+NonpctvarsallTracts.Summary %>%
+  gather(Variable, Value, -year, -TOD) %>%
+  ggplot(aes(year, Value, fill = TOD)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  facet_wrap(~Variable, scales = "free", ncol=3) +
+  scale_fill_manual(values = paletteTOD) +
+  labs(title = "Indicator differences across time and space (set 1)") +
+  plotTheme() + theme(legend.position="bottom")
+```
+
+In this second set of indicator bar graphs, there are two that focus on the race indicators examined previously in the maps: percentages of population identifying as White and as by Black. The share of White population living in TOD areas has increased over this stretch of time, whereas the percent of Black population has declined. This diverging pattern mirrors the region's gentrification over the past decade, where higher costs of living have driven lower income, majority Black populations, out of the heart of the city and towards the periphery where there are fewer WMATA stops.
+
+The middle indicator in this series shows that the difference in share of people with a means of transportation to work increased a bit from 2009 to 2017, but it is interesting to note that even in 2017, only ~59% of people in TOD areas had transportation. There are likely other factors at play that should be explored in further studies; however, this could present opportunities for community leaders to discuss ways to enhance ridership within certain neighborhoods.
+```{r comparison_groupedbars_2, include=TRUE, message=FALSE, warning=FALSE}
+PctvarsallTracts.Summary %>%
+  gather(Variable, Value, -year, -TOD) %>%
+  ggplot(aes(year, Value, fill = TOD)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  facet_wrap(~Variable, scales = "free_x", ncol=3) +
+  scale_fill_manual(values = paletteTOD) +
+  labs(title = "Indicator differences across time and space (set 2)") +
+  plotTheme() + theme(legend.position="bottom")
+
+```
+
+# Graduated Symbol Maps: Population and Rent around WMATA Stops
+The graduated symbol maps explore the population and median rent in the census tracts that are within the 1/2 mile transit buffer. It is imperative to acknowledge the inherent spatial biases that present themselves through this process. First, the sum the population around each WMATA stop takes the sum of population in each census tract within the buffer. Even in using the centroid for creating the initial selection to create the buffer, calculating the aggregate population associated with each stop takes the sums at tract level; there is no further granularity provided for how within the tract the population is distributed. This is an issue when aggregating median rent and calculating the average for each stop, as it takes the average of the median rents of each entire census tract associated with each stop. Also in both cases, data is incorporated more than once when a tract lies within the buffer range of multiple stops. While the sum of population and average median rent show the distribution of these variables for each stop across the city, one must acknowledge that there is not a one-for-one representation of each data point in the calculations.
+
+```{r centroid_wrangling_TOD_filter, include=TRUE, message=FALSE, warning=FALSE}
+
+# More wrangling to get centroids for all tracts, both years, filtering by TOD
+# some more data wrangling
+wmataStopscoord <- wmataStops %>% 
+                  st_transform(st_crs('ESRI:102685')) %>% 
+                  dplyr::mutate(x = sf::st_coordinates(.)[,1], 
+                                y = sf::st_coordinates(.)[,2]) %>%
+                  distinct(NAME, .keep_all=TRUE) %>%
+                  dplyr::select(-LINE)
+
+wmataBuffersStops <- 
+  st_transform(wmataStopscoord, ('ESRI:102685'))%>%
+    st_buffer(2640) %>% # projection is in feet
+      dplyr::select(NAME, geometry)
+
+joinBuffersStopsTracts <-
+  st_join(allTracts.group, wmataBuffersStops)%>%
+  filter(!is.na(NAME)) 
+
+# grouping by wmata stop - population
+totalPopbyStop <- joinBuffersStopsTracts %>%
+  group_by(NAME, year, .add=TRUE) %>%
+  summarize(sumPop = sum(TotalPop))%>%
+  st_drop_geometry() %>%
+  right_join(wmataStopscoord, by="NAME")
+```
+
+## Population within 1/2 mi. of each WMATA Stop
+The first set shows the sum of population within 1/2 mile of each WMATA stop. While changes in the size of the circles are minimal between the years (there is some overlapping, indicating that circles are growing), it is difficult to draw a conclusion about how transit access affected the population size. This is true especially in light of the spatial biases acknowledged above, and the other variables likely at play. Since it is hard to see the changes with this map, a histogram is provided below to see how many tracts saw population change over the time period.
+
+```{r graduated_symbol_map1a, include=TRUE, message=FALSE, warning=FALSE}
+map.TotalPopbyStop <-
+  ggplot()+
+  geom_sf(data=allTracts.group, color="white", fill="gray", alpha=0.4)+
+  geom_point(data=totalPopbyStop, aes(x=x, y=y, size=sumPop), color='#253494', alpha=0.5)+
+  scale_size_area(max_size = 8) +
+  guides(size=guide_legend("Sum of Population")) +
+  geom_sf(data=wmataLines, size=1, color="black", alpha=0.8) + 
+  aes() +
+  labs(title="Sum of Population within 1/2 mi. of WMATA Stops, by Stop", 
+       subtitle="Washington, DC", 
+       caption="Data: US Census Bureau; opendata.dc.gov") +
+  facet_wrap(~year) +
+  mapTheme()
+map.TotalPopbyStop
+```
+
+```{r}
+ 
+# How has sum of population changed over time?
+ggplot(totalPopbyStop)+
+  geom_histogram(aes(sumPop), binwidth = 3000, fill="#253494")+
+  labs(
+    title = "Change in Sum of Population per WMATA stop, by Number of Census Tracts, 2009 & 2017",
+    caption = "Data: US Census Bureau",
+    x="Sum of Population per Stop", 
+    y="Number of tracts") +
+  facet_wrap(~year)
+```
+
+
+## Average Median Rent within 1/2 mi. of each WMATA Stop
+This map shows the average median rent by WMATA stop. A continuous color ramp was chosen instead of size for a graduated scale because it better illustrates the changing cost between the years, especially in certain areas where lots of WMATA stations are congregated. The shift from green to dark purple in the center of downtown, where several metrorail lines converge, indicates an increase in average rent costs. Furthermore, the upper northwest quadrant, which continues into high-income neighborhoods in Maryland, also increased. Average rent in the northeast and southeast, however, did not change as drastically. These are areas that have not experienced the degree of gentrification seen in the northwest.
+```{r graduated_symbol_map2, include=TRUE, message=FALSE, warning=FALSE}
+# grouping by wmata stop - medrent
+avgMedRentbyStop <- joinBuffersStopsTracts %>%
+    group_by(NAME, year, .add=TRUE) %>%
+    summarize(AvgRent = mean(MedRent.inf, na.rm = TRUE)) %>%
+    st_drop_geometry() %>%
+    right_join(wmataStopscoord, by="NAME")
+
+# map
+map.avgMedRentbyStop <-
+  ggplot()+
+  geom_sf(data=allTracts.group, color="white", fill="gray", alpha=0.4)+
+  geom_point(data=avgMedRentbyStop, aes(x=x, y=y, color=AvgRent, size=5))+
+  scale_size_area()+
+  scale_color_viridis(option="D", direction= -1) +
+  guides(size = FALSE) +
+  geom_sf(data=wmataLines, size=1, color="black") + 
+  aes() +
+  labs(title="Avg. Median Rent within 1/2 mi. of WMATA Stops, by Stop", 
+       subtitle="Washington, DC", 
+       caption="Data: US Census Bureau; opendata.dc.gov") +
+  facet_wrap(~year) +
+  mapTheme()
+map.avgMedRentbyStop
+```
+
+## Population and Median Rent within 1/2 mi. of each WMATA Stop
+Putting these maps together using size for population and color for median rent helps tell the story a bit more clearly. Looking again towards the center of the city, the two variables illustrated together show greater rent costs and population growth around transit-dense areas. In the northeast and southeast, where rents have not increased to the same degree, population also steadily continues to grow. This presents an opportunity for leaders to consider transit-oriented development in such areas.
+```{r graduated_symbol_map3, include=TRUE, message=FALSE, warning=FALSE}
+# grouping by wmata stop - population AND medrent
+joinPopRentbyStop <- joinBuffersStopsTracts %>%
+  group_by(NAME, year, .add=TRUE) %>%
+  summarize(sumPop = sum(TotalPop), AvgRent = mean(MedRent.inf, na.rm = TRUE)) %>%
+  st_drop_geometry() %>%
+  right_join(wmataStopscoord, by="NAME")
+
+# map
+## legend work needed - avg rent bar, put lowest on top, but keep it  yellow
+map.gradsymbolcombo <-
+  ggplot()+
+  geom_sf(data=allTracts.group, color="white", fill="gray", alpha=0.4)+
+  geom_point(data=joinPopRentbyStop, aes(x=x, y=y, size=sumPop, color=AvgRent))+
+    scale_size_area(max_size = 8) +
+    guides(size=guide_legend("Sum of Population"))+
+    scale_color_viridis(option="D", direction= -1) +
+  geom_sf(data=wmataLines, size=1, color="black") + 
+  aes() +
+  labs(title="Population and Avg. Median Rent within 1/2 mi. of WMATA Stops, by Stop", 
+       subtitle="Washington, DC", 
+       caption="Data: US Census Bureau; opendata.dc.gov") +
+  facet_wrap(~year) +
+  mapTheme()
+map.gradsymbolcombo
+
+```
+
+# Exploring Mean Rent as a Function of Distance to WMATA Stops using a Multiple Ring Buffer
+In order to further examine the relationship between rent costs and proximity to transit, a multiple ring buffer function was run in order to create half mile "buffers" from each WMATA stop. The  the allRings data is converted from a dataframe to an sf data frame.
+```{r multiple_ring_buffer, include=TRUE, message=FALSE, warning=FALSE, results='hide'}
+# MULTIPLE RING BUFFER -----------------
+multipleRingBuffer <- function(inputPolygon, maxDistance, interval) 
+  
+# creating a list of distances to iterate through to create each ring
+{distances <- seq(0, maxDistance, interval)
+# start with second value in the list (first is 0)
+  distancesCounter <- 2
+# total number of rings to create
+  numberOfRings <- floor(maxDistance / interval)
+# counter of the number of rings
+  numberOfRingsCounter <- 1
+# initialize
+  allRings <- data.frame()
+
+  while (numberOfRingsCounter <= numberOfRings) 
+  {if(distances[distancesCounter] < 0 & distancesCounter == 2)
+    { buffer1 <- st_buffer(inputPolygon, distances[distancesCounter])
+      buffer1_ <- st_difference(inputPolygon, buffer1)
+      thisRing <- st_cast(buffer1_, "POLYGON")
+      thisRing <- as.data.frame(thisRing[,ncol(thisRing)])
+      thisRing$distance <- distances[distancesCounter]
+    }
+    else if(distances[distancesCounter] < 0 & distancesCounter > 2) 
+    { buffer1 <- st_buffer(inputPolygon, distances[distancesCounter])
+      buffer2 <- st_buffer(inputPolygon, distances[distancesCounter-1])
+      thisRing <- st_difference(buffer2,buffer1)
+      thisRing <- st_cast(thisRing, "POLYGON")
+      thisRing <- as.data.frame(thisRing$geometry)
+      thisRing$distance <- distances[distancesCounter]
+    }
+    
+    else 
+    { buffer1 <- st_buffer(inputPolygon, distances[distancesCounter])
+      buffer1_ <- st_buffer(inputPolygon, distances[distancesCounter-1])
+      thisRing <- st_difference(buffer1,buffer1_)
+      thisRing <- st_cast(thisRing, "POLYGON")
+      thisRing <- as.data.frame(thisRing[,ncol(thisRing)])
+      thisRing$distance <- distances[distancesCounter]
+    }  
+    
+    allRings <- rbind(allRings, thisRing)
+    distancesCounter <- distancesCounter + 1
+    numberOfRingsCounter <- numberOfRingsCounter + 1
+  }
+  
+  #convert allRings data frame to an sf data frame
+  allRings <- st_as_sf(allRings)
+}
+```
+Creating allTracts.ring involved using a spatial join to join the allTracts data to the multiple ring buffer and a left-join to bring in median rent. Distance is also converted to miles for the purpose of plotting it in half-mile increments. 
+
+Then, the census tracts were grouped by distance, using the centroid of each to determine which buffer ring it sits within. Using group_by, allTracts.rings.group groups the data by distance and year, and then uses summarise() to calculate the mean of median rent for each group.
+
+```{r multiple_ring_buffer2, include=TRUE, message=FALSE, warning=FALSE, results='hide'}
+allTracts.rings <-
+  st_join(st_centroid(dplyr::select(allTracts.group, GEOID, year)),
+          multipleRingBuffer(st_union(wmataStops), 47520, 2640)) %>%
+  st_drop_geometry() %>%
+  left_join(dplyr::select(allTracts.group, GEOID, MedRent.inf, year),
+            by=c("GEOID"="GEOID", "year"="year")) %>%
+  st_sf() %>%
+  mutate("distance_miles" = distance / 5280)
+
+allTracts.rings.group <- allTracts.rings %>%
+  group_by(distance_miles,year, .add=TRUE) %>%
+  summarise(AvgRent_dollars = mean(MedRent.inf, na.rm = TRUE))
+```
+
+This line plot charts distance to a WMATA stop as a function of average rent. The greatest distance of a tract's centroid from a stop in the city was within 3.5 miles, and this was for one census tract in 2017. This specific census tract in the northeast quadrant was not an established census tract in 2009, thus explaining why the point only appears for one year. Overall, the lines show that average rent decreases when distance from a stop hits 1.5 miles, but then shoots back up higher than before as the distance grows past two miles. This is likely due to the higher-income neighborhoods heading towards the Maryland border, with residences near parts of Rock Creek Park and along the northern section of the Potomac River. The one 2019 point shows that average rent is lowest, though, once surpassing the 3 mile buffer mark.
+
+When looking at this visualization, there are a few caveats to point out. First, each point represents a collection of census tracts that fall within that buffer distance, and the rent is calculated as an average based on that grouping. Also, one might interpret this as a city with widespread access to transit, with everyone being relatively close to a stop. However, it is important to remember the spatial bias: these distances were calculated based on centroids of the tract, and thus cannot account other phenomena that may affect population distribution within the boundaries. As mentioned earlier, though, this is the best selection method for this analysis. Furthermore, this does not take into account population weighting - it is just an average of median incomes of the tract at-large.
+
+So, while this plot is useful in showing that there seems to be a sweet spot in lower average rent between the 1 and 1.5 mile buffer of a WMATA stop, there are other factors likely influencing the jump in cost.
+
+```{r multiple_ring_buffer3, include=TRUE, message=FALSE, warning=FALSE, results='hide'}
+ggplot(data=allTracts.rings.group,
+       aes(x = distance_miles, y = AvgRent_dollars, color = year)) +
+  scale_color_manual(values = paletteYears)+
+  geom_line(size=2) +
+  geom_point(size=3)
+```
+
+# Crime Data: Exploring the Relationship between Crime, Rent, and Transit
+The last part of this analysis brings in crime data to explore the relationship between crime, rent, and transit access. DC's Open Data portal contains a robust dataset for each year of crime incidents categorized by offense type. After reading in the data and aligning its projection, the coordinates are extracted and added to the data. 
+
+## Crime Data Wrangling
+```{r crime_data_wrangling, include=TRUE, message=FALSE, warning=FALSE, results='hide'}
+# 2009
+DC_2009_Crime <-
+  rbind(
+    st_read("https://opendata.arcgis.com/datasets/73cd2f2858714cd1a7e2859f8e6e4de4_33.geojson") %>% 
+      select(OBJECTID, OFFENSE)) %>%
+  st_transform(st_crs(tracts2009))
+
+# getting coordinates, 2009
+DC_2009_Crime <- DC_2009_Crime %>%
+  dplyr::mutate(x = sf::st_coordinates(.)[,1],
+                y = sf::st_coordinates(.)[,2])
+  
+# 2017
+DC_2017_Crime <- 
+  rbind(
+    st_read("https://opendata.arcgis.com/datasets/6af5cb8dc38e4bcbac8168b27ee104aa_38.geojson") %>% 
+      select(OBJECTID, OFFENSE)) %>%
+    st_transform(st_crs(tracts2009))
+
+# getting coordinates, 2017
+DC_2017_Crime <- DC_2017_Crime %>%
+  dplyr::mutate(x = sf::st_coordinates(.)[,1],
+                y = sf::st_coordinates(.)[,2])
+```
+
+## Mapping Robbery Incidents, Median Rent, and Transit Access, 2009 & 2017
+In this analysis, the "Robbery" type was selected as the focus to see if incidents coalesce around areas with WMATA stops in lower rent areas. To understand this spatial relationship, the crime point data is mapped on top of a choropleth base map for median rent, by census tract. The first map presented shows 2009. It indicates that there are clusters of robbery incidents within the transit buffers, especially in the center of the city and further out in the northeast. Incidents are fewer in the higher rent areas in the northwest.
+
+```{r crime_robbery_data_map2009, include=TRUE, message=FALSE, warning=FALSE}
+# Mapping DC crime data 2009
+ggplot(subset(DC_2009_Crime, OFFENSE =="ROBBERY")) + 
+  geom_sf(data = allTracts.group %>%
+          filter(year=="2009"),
+          aes(fill = q5(MedRent.inf)), color = NA, alpha=0.75) +
+  scale_fill_manual(values = palette5.YlGnBu,
+                    labels = qBr(allTracts.group, "MedRent.inf"),
+                    name = "Median Rent ($) \n(Quintile Breaks)")+
+  geom_point(aes(x=x, y=y, color="black"), size=0.025) +
+    scale_color_identity(labels = NULL,
+                         name = "Robbery Incident", guide = "legend")+
+  geom_sf(data=wmataStops, size=1.75, shape=22,legend="black", fill="#999999")+
+  geom_sf(data=buffer, fill="transparent", color="red", size=1.25)+
+  labs(title="DC Crime: Robbery Incidents and Median Rent, 2009", 
+       subtitle="Red border denotes areas close to WMATA stops; \nGrey squares are WMATA stops", 
+       caption="Data: US Census Bureau; opendata.dc.gov") +
+  mapTheme()
+```
+
+In this map for 2017, a similar pattern is shown, with concentrations of incidents in the downtown area and in lower median rent areas in the northeast, with fewer in higher rent areas in the northwest. Through these visualizations, it does seem that there may be a relationship between greater number of incidents and lower rent areas. However, without digging deeper into other factors, one must remember that correlation does not imply causation.
+```{r crime_robbery_data_map2017, include=TRUE, message=FALSE, warning=FALSE}
+# Mapping DC crime data 2017
+ggplot(subset(DC_2017_Crime, OFFENSE =="ROBBERY")) + 
+  geom_sf(data = allTracts.group %>%
+          filter(year=="2017"),
+          aes(fill = q5(MedRent.inf)), color = NA, alpha=0.75) +
+  scale_fill_manual(values = palette5.YlGnBu,
+                    labels = qBr(allTracts.group, "MedRent.inf"),
+                    name = "Median Rent ($) \n(Quintile Breaks)")+
+  geom_point(aes(x=x, y=y, color="black"), size=0.025) +
+    scale_color_identity(labels = NULL,
+                         name = "Robbery Incident", guide = "legend")+
+  geom_sf(data=wmataStops, size=1.75, shape=22,color="black", fill="#999999")+
+  geom_sf(data=buffer, fill="transparent", color="red", size=1.25)+
+  labs(title="DC Crime: Robbery Incidents and Median Rent, 2017", 
+       subtitle="Red border denotes areas close to WMATA stops; \nGrey squares are WMATA stops", 
+       caption="Data: US Census Bureau; opendata.dc.gov") +
+  mapTheme()
+
+```
+
+## Crime (Robbery Incidents) and TOD
+After examining the maps, there is still no clear comparison of robbery incidents in TOD areas and non-TOD areas. In order to look at the number of robberies by TOD, more data wrangling is needed to associate the spatial data from robbery incidents with TOD and non-TOD areas. 
+
+The code below shows this wrangling. First, the crime dataframes are filtered to only include robberies. Then, each one is joined with the allTracts.group dataframe and grouped by GEOID into a new dataframe. There is now one row for each robbery incident. Since multiple census tracts (represented by GEOID) contain multiple robbery incidents, some of which occur at the same locations, count() is used create a new column with then number of incident at each location. Data for year and for TOD are also retained. Finally, the robbery counts for each year are bound together using rbind() and grouped by TOD and Year, and the summarise() function sums the incidents per census tract (GEOID).
+
+```{r crime_robberies_TOD1, include=TRUE, message=FALSE, warning=FALSE}
+# --- Data wrangling to associate the spatial data from robbery incidents with TOD and non-TOD areas
+group.robbery.2009 <- DC_2009_Crime %>%
+  filter(OFFENSE=="ROBBERY")
+group.robbery.2017 <- DC_2017_Crime %>%
+  filter(OFFENSE=="ROBBERY")
+
+robbery.tract.2009 <-
+  st_join(allTracts.group, group.robbery.2009) %>%
+  group_by(GEOID, .add=TRUE)
+
+robbery.tract.count.2009 <- count(as_tibble(robbery.tract.2009), GEOID, x, y, TOD, year)
+
+robbery.tract.2017 <-
+  st_join(allTracts.group, group.robbery.2017) %>%
+  group_by(GEOID, .add=TRUE)
+
+robbery.tract.count.2017 <- count(as_tibble(robbery.tract.2017), GEOID, x, y, TOD, year)
+
+allRobberyTOD <- rbind(robbery.tract.count.2009, robbery.tract.count.2017) %>%
+  group_by(TOD, year) %>%
+  summarise(TotalRobberies = sum(n, na.rm=T))
+
+# create a table
+allRobberyTOD.table <- allRobberyTOD %>%
+  kable() %>%
+  kable_styling()
+```
+
+Lastly, the number of robbery incidents in TOD areas and non-TOD areas, in both years, is visualized in a bar graph. Interestingly, there is little difference between the amount of incidents, both in TOD vs. non-TOD, nor is there a stark difference between the two years. This lack of change reflected in the data indicates that while this type of crime persists, proximity to transit stops does not seem to be a major factor.
+
+```{r crime_robberies_TOD2, include=TRUE, message=FALSE, warning=FALSE}
+allRobbery.bar <-
+  ggplot(data=allRobberyTOD, aes(year, TotalRobberies, fill=TOD))+
+  geom_bar(stat="identity", position="dodge")+
+  geom_text(aes(label=TotalRobberies), vjust=1.6, color="black",
+            position = position_dodge(0.9), size=3.75) +
+  scale_fill_manual(values=paletteTOD)+
+  labs(title="Total Robberies in TOD and Non-TOD Census Tracts, by Year",
+       caption="Data: US Census Bureau; opendata.dc.gov")
+allRobbery.bar 
+```
+
+# Conclusion
+This analysis reveals that there are areas that would benefit from transit-oriented development efforts, but the key will be embarking on TOD projects without driving up cost of rent beyond the threshold that more vulnerable communities would be able to afford. In addition to using data analysis to drive decision making, it is also important to bring policy makers, real estate developers, and community leaders together to the same table to better understand nuances that are likely not revealed in the data. 
+
+In thinking about where these efforts would be best suited, the southeast quadrant of the city stands out. This area has a high percentage of people who do not have means of transportation to work, many of whom live within the transport buffer. Undergoing projects geared towards mixed-use buildings with affordable costs, and promoting access to an already-established transit system, could help promote usage and increase ridership.
+
+It is important to strike this balance between transit access and equity, so that the trends of gentrification do not continue pushing out the lower income and primarily Black communities, who already lack means of transportation to work, further away from transit. 
