@@ -585,30 +585,30 @@ DC_2009_Crime <-
 DC_2009_Crime <- DC_2009_Crime %>%
   dplyr::mutate(x = sf::st_coordinates(.)[,1],
                 y = sf::st_coordinates(.)[,2])
-  
+
 # 2017
 DC_2017_Crime <- 
   rbind(
     st_read("https://opendata.arcgis.com/datasets/6af5cb8dc38e4bcbac8168b27ee104aa_38.geojson") %>% 
       select(OBJECTID, OFFENSE)) %>%
-    st_transform(st_crs(tracts2009))
+  st_transform(st_crs(tracts2009))
 
 # getting coordinates, 2017
 DC_2017_Crime <- DC_2017_Crime %>%
   dplyr::mutate(x = sf::st_coordinates(.)[,1],
-                y = sf::st_coordinates(.)[,2])
+                y = sf::st_coordinates(.)[,2]) 
 
 # Mapping DC crime data 2009
 ggplot(subset(DC_2009_Crime, OFFENSE =="ROBBERY")) + 
   geom_sf(data = allTracts.group %>%
-          filter(year=="2009"),
+            filter(year=="2009"),
           aes(fill = q5(MedRent.inf)), color = NA, alpha=0.75) +
   scale_fill_manual(values = palette5.YlGnBu,
                     labels = qBr(allTracts.group, "MedRent.inf"),
                     name = "Median Rent ($) \n(Quintile Breaks)")+
   geom_point(aes(x=x, y=y), size=0.025) +
   geom_sf(data=wmataStops, size=1.75, shape=22,color="black", fill="#999999")+
-  geom_sf(data=buffer, fill="transparent", color="red", size=1.5)+
+  geom_sf(data=buffer, fill="transparent", color="red", size=1.25)+
   labs(title="DC Crime: Robbery Incidents in 2009", 
        subtitle="Washington, DC", 
        caption="Data: US Census Bureau; opendata.dc.gov") +
@@ -617,16 +617,57 @@ ggplot(subset(DC_2009_Crime, OFFENSE =="ROBBERY")) +
 # Mapping DC crime data 2017
 ggplot(subset(DC_2017_Crime, OFFENSE =="ROBBERY")) + 
   geom_sf(data = allTracts.group %>%
-          filter(year=="2017"),
+            filter(year=="2017"),
           aes(fill = q5(MedRent.inf)), color = NA, alpha=0.75) +
   scale_fill_manual(values = palette5.YlGnBu,
                     labels = qBr(allTracts.group, "MedRent.inf"),
                     name = "Median Rent ($) \n(Quintile Breaks)")+
   geom_point(aes(x=x, y=y), size=0.025)+
   geom_sf(data=wmataStops, size=1.75, shape=22,color="black", fill="#999999")+
-  geom_sf(data=buffer, fill="transparent", color="red", size=1.5)+
+  geom_sf(data=buffer, fill="transparent", color="red", size=1.25)+
   labs(title="DC Crime: Robbery Incidents in 2017", 
        subtitle="Washington, DC", 
        caption="Data: US Census Bureau; opendata.dc.gov") +
   mapTheme()
+
+
+# --- Crime data analysis
+
+group.robbery.2009 <- DC_2009_Crime %>%
+  filter(OFFENSE=="ROBBERY")
+group.robbery.2017 <- DC_2017_Crime %>%
+  filter(OFFENSE=="ROBBERY")
+
+robbery.tract.2009 <-
+  st_join(allTracts.group, group.robbery.2009) %>%
+  group_by(GEOID, .add=TRUE)
+
+robbery.tract.count.2009 <- count(as_tibble(robbery.tract.2009), GEOID, x, y, TOD, year)
+
+robbery.tract.2017 <-
+  st_join(allTracts.group, group.robbery.2017) %>%
+  group_by(GEOID, .add=TRUE)
+
+robbery.tract.count.2017 <- count(as_tibble(robbery.tract.2017), GEOID, x, y, TOD, year)
+
+
+allRobberyTOD <- rbind(robbery.tract.count.2009, robbery.tract.count.2017) %>%
+  group_by(TOD, year) %>%
+  summarise(TotalRobberies = sum(n, na.rm=T))
+
+bar.allRobbery <-
+  ggplot(data=allRobberyTOD, aes(year, TotalRobberies, fill=TOD))+
+  geom_bar(stat="identity", position="dodge")+
+  scale_fill_manual(values=paletteTOD)
+bar.allRobbery 
+
+allRobbery.Summary <-
+  unite(year, TOD, sep = ": ", remove = T) %>%
+  gather(Variable, Value, -year, -TOD) %>%
+  mutate(Value = round(Value, 2)) %>%
+  spread(year.TOD, Value) %>%
+  kable() %>%
+  kable_styling() %>%
+  footnote(general_title = "\n",
+           general = "Summary for All Tracts in Washington, DC")
 
